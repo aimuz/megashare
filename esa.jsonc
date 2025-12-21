@@ -1,0 +1,15 @@
+{
+    "name": "megashare-s3",
+    "description": "MegaShare file sharing edge function",
+    "entry": "./functions/index.js",
+    "installCommand": "npm install",
+    "buildCommand": "npm run build",
+    "assets": {
+        "directory": "./dist"
+    },
+    "codeVersions": [],
+    "dev": {
+        "port": 18080,
+        "localUpstream": ""
+    }
+}
