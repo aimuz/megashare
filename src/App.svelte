@@ -69,50 +69,6 @@
         return `${Math.floor(seconds / 3600)} 时 ${Math.floor((seconds % 3600) / 60)} 分`;
     };
 
-    /**
-     * 创建进度追踪的 TransformStream
-     * 用于精确追踪字节级别的传输进度
-     */
-    const createProgressStream = (totalBytes, onProgress) => {
-        let loadedBytes = 0;
-        let lastUpdateTime = Date.now();
-        let lastLoadedBytes = 0;
-
-        return new TransformStream({
-            transform(chunk, controller) {
-                loadedBytes += chunk.byteLength;
-                const now = Date.now();
-                const elapsed = (now - lastUpdateTime) / 1000;
-
-                // 每 100ms 更新一次进度，避免过于频繁
-                if (elapsed >= 0.1 || loadedBytes === totalBytes) {
-                    const bytesPerSecond =
-                        elapsed > 0
-                            ? (loadedBytes - lastLoadedBytes) / elapsed
-                            : 0;
-                    const remainingBytes = totalBytes - loadedBytes;
-                    const eta =
-                        bytesPerSecond > 0
-                            ? remainingBytes / bytesPerSecond
-                            : 0;
-
-                    onProgress({
-                        loaded: loadedBytes,
-                        total: totalBytes,
-                        percent: Math.round((loadedBytes / totalBytes) * 100),
-                        speed: bytesPerSecond,
-                        eta: eta,
-                    });
-
-                    lastUpdateTime = now;
-                    lastLoadedBytes = loadedBytes;
-                }
-
-                controller.enqueue(chunk);
-            },
-        });
-    };
-
     // Real-time speed tracker using sliding window with EMA smoothing
     class SpeedTracker {
         constructor(windowMs = 2000) {
