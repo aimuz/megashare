@@ -4,6 +4,8 @@
 
 > **声明**：本项目由阿里云 ESA 提供加速、计算和保护
 
+**🌐 阿里云 ESA 官网**：[边缘安全加速 ESA](https://tianchi.aliyun.com/specials/promotion/freetier/esa?taskCode=25254&recordId=05322c652b1951759121514ba18a42a3)
+
 **🔗 在线体验**：[https://megashare-s3.c761953f.er.aliyun-esa.net](https://megashare-s3.c761953f.er.aliyun-esa.net)
 
 ## 项目简介
