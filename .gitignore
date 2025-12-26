@@ -23,4 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 /.wrangler
-.dev/
+/.dev/
+/localhost.crt
+/localhost.key

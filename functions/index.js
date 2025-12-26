@@ -3,66 +3,55 @@
  * 统一入口点 + 路由
  */
 
-import { errorResponse, handleCORS } from "./utils.js";
 import {
     handleUploadStart,
     handleUploadChunk,
+    handleUploadChunkData,
     handleUploadChunkComplete,
     handleUploadComplete,
 } from "./handlers/upload.js";
-import { handleGetFile, handleDownloadChunk } from "./handlers/file.js";
+import { handleGetFile, handleGetChunk } from "./handlers/file.js";
+import { handleGC } from "./handlers/gc.js";
+import { handleGetConfig } from "./handlers/config.js";
 
-export default {
-    async fetch(request, ctx) {
-        const url = new URL(request.url);
-        const path = url.pathname;
-        const method = request.method;
+// 导入 KV 适配器以触发插件注册
+import "./kv/edgekv.js";
 
-        // CORS 预检
-        if (method === "OPTIONS") {
-            return handleCORS();
-        }
+// 导入 ENV 适配器以触发插件注册
+import "./env/edgeenv.js";
+import { loadEnv } from "./env/edgeenv.js";
 
-        try {
-            // --- Upload 路由 ---
+// 导入存储后端以触发插件注册
+import "./storage/s3.js";
 
-            if (path === "/api/upload/start" && method === "POST") {
-                return await handleUploadStart(request);
-            }
+import { Hono } from 'hono'
+const app = new Hono()
 
-            if (path === "/api/upload/chunk" && method === "POST") {
-                return await handleUploadChunk(request);
-            }
+// 统一错误处理
+app.onError((err, c) => {
+    console.error(`[Error] ${c.req.method} ${c.req.path}:`, err.message || err);
 
-            if (path === "/api/upload/chunk" && method === "PUT") {
-                return await handleUploadChunkComplete(request);
-            }
+    // 避免暴露内部错误细节
+    const status = err.status || 500;
+    const message = status < 500 ? err.message : "Internal Server Error";
 
-            if (path === "/api/upload/complete" && method === "POST") {
-                return await handleUploadComplete(request);
-            }
+    return c.json({ error: message }, status);
+});
 
-            // --- File 路由 ---
+// 在所有请求前加载环境变量
+app.use("*", async (c, next) => {
+    await loadEnv();
+    await next();
+});
 
-            // 动态路由: /api/file/:id/chunk/:chunkIndex/download
-            const chunkMatch = path.match(/^\/api\/file\/([^/]+)\/chunk\/(\d+)\/download$/);
-            if (chunkMatch && method === "GET") {
-                return await handleDownloadChunk(
-                    chunkMatch[1],
-                    parseInt(chunkMatch[2], 10)
-                );
-            }
+app.post("/api/upload/start", handleUploadStart)
+app.post("/api/upload/chunk", handleUploadChunk)
+app.put("/api/upload/chunk", handleUploadChunkComplete)
+app.post("/api/upload/chunk/data", handleUploadChunkData)
+app.post("/api/upload/complete", handleUploadComplete)
+app.get("/api/file/:id/chunk/:chunkIndex", handleGetChunk)
+app.get("/api/file/:id", handleGetFile)
+app.post("/api/gc", handleGC)
+app.get("/api/config", handleGetConfig)
 
-            // 动态路由: /api/file/:id
-            const fileMatch = path.match(/^\/api\/file\/([^/]+)$/);
-            if (fileMatch && method === "GET") {
-                return await handleGetFile(fileMatch[1]);
-            }
-
-            // 404
-            return new Response("Not Found", { status: 404 });
-        } catch (err) {
-            return errorResponse(err.message);
-        }
-    },
-};
+export default app
