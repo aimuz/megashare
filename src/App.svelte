@@ -775,9 +775,9 @@
             const writable = await fileHandle.createWritable();
 
             try {
+                let cumulativeBytes = 0;
                 for (let i = 0; i < metaData.totalChunks; i++) {
-                    const chunkBaseBytes =
-                        i * (totalBytes / metaData.totalChunks);
+                    const chunkBaseBytes = cumulativeBytes;
 
                     const decryptedBuffer = await withRetry(async () => {
                         downloadedBytes = chunkBaseBytes; // 重试时重置进度
@@ -798,6 +798,7 @@
                     });
 
                     await writable.write(new Uint8Array(decryptedBuffer));
+                    cumulativeBytes += decryptedBuffer.byteLength;
                 }
 
                 await writable.close();

@@ -67,7 +67,7 @@ export async function handleGC(c) {
     // 1. 验证 Token
     const auth = await verifyGCToken(c.req);
     if (!auth.valid) {
-        return errorResponse(auth.error, auth.status);
+        return errorResponse(c, auth.error, auth.status)
     }
 
     // 2. 获取过期配置

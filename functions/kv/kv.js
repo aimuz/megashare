@@ -8,6 +8,7 @@
  * @property {(key: string, options?: {type?: 'text'|'json'}) => Promise<any>} get - 获取值
  * @property {(key: string, value: string|object, options?: {expirationTtl?: number}) => Promise<void>} put - 存储值
  * @property {(key: string) => Promise<void>} delete - 删除值
+ * @property {(options?: {prefix?: string}) => Promise<{keys: {name: string}[]}>} list - 列出键
  */
 
 // --- 插件注册系统 ---

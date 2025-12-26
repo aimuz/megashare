@@ -51,38 +51,6 @@ export async function loadEnv() {
 }
 
 /**
- * 将环境变量保存到 KV
- */
-export async function saveEnv() {
-    try {
-        const kv = getKVInstance();
-        await kv.put(ENV_KEY, JSON.stringify(envCache));
-    } catch (e) {
-        console.error("Failed to save env to EdgeKV:", e);
-        throw e;
-    }
-}
-
-/**
- * 设置环境变量（会同步到 KV）
- * @param {string} key
- * @param {any} value
- */
-export async function setEnv(key, value) {
-    envCache[key] = value;
-    await saveEnv();
-}
-
-/**
- * 删除环境变量（会同步到 KV）
- * @param {string} key
- */
-export async function deleteEnv(key) {
-    delete envCache[key];
-    await saveEnv();
-}
-
-/**
  * 直接设置缓存（用于测试或外部初始化）
  * @param {Object<string, any>} env
  */

@@ -24,7 +24,7 @@ function getS3Config() {
     const prefix = getConfig("S3_PREFIX");
 
     if (!endpoint || !bucket || !accessKeyId || !accessKeySecret) {
-        throw new Error("Missing S3 configuration in EdgeKV");
+        throw new Error("Missing required S3 configuration (S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY_ID, S3_ACCESS_KEY_SECRET)");
     }
 
     // 确保 endpoint 包含协议
@@ -90,15 +90,6 @@ class S3Client {
             Key: this._key(key),
         });
         await this.client.send(command);
-    }
-
-    async listObjects(prefix = "") {
-        const command = new ListObjectsV2Command({
-            Bucket: this.bucket,
-            Prefix: this._key(prefix),
-        });
-        const response = await this.client.send(command);
-        return response.Contents || [];
     }
 
     async getSignedUploadUrl(key, expiresIn = 3600) {
@@ -203,22 +194,11 @@ class S3Backend {
 
     /**
      * 删除文件
-     * 如果是"文件夹"（以 / 结尾），需要删除所有子对象
      */
     async deleteFile(fileIds) {
         const ids = Array.isArray(fileIds) ? fileIds : [fileIds];
-
         for (const id of ids) {
-            if (id.endsWith("/")) {
-                // 删除"文件夹"下所有对象
-                const objects = await this.client.listObjects(id);
-                for (const obj of objects) {
-                    const relativePath = obj.Key.replace(this.client.prefix, "");
-                    await this.client.deleteObject(relativePath);
-                }
-            } else {
-                await this.client.deleteObject(id);
-            }
+            await this.client.deleteObject(id);
         }
     }
 }

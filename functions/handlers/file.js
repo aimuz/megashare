@@ -59,14 +59,12 @@ export async function handleGetChunk(c) {
         return errorResponse(c, "Missing fileId or chunkIndex", 400);
     }
 
-    console.log("getChunkInfo", fileId, chunkIndex);
-    const { chunk } = await getChunkInfo(fileId, chunkIndex);
-    console.log("getChunkInfo", chunk);
-    if (!chunk) {
+    const chunkInfo = await getChunkInfo(fileId, chunkIndex);
+    if (!chunkInfo || !chunkInfo.chunk) {
         return errorResponse(c, `Chunk ${chunkIndex} not found`, 404);
     }
+    const { chunk } = chunkInfo;
     const storage = await createStorageBackend();
-    console.log("storage", storage);
     if (storage.supportsDirectUrl) {
         // 直链模式：302 重定向
         const downloadUrl = await storage.getDownloadUrl(chunk.fileId);
@@ -78,8 +76,5 @@ export async function handleGetChunk(c) {
     const headers = new Headers(response.headers);
     headers.set("Access-Control-Allow-Origin", "*");
 
-    return c.response(response.body, {
-        status: response.status,
-        headers,
-    });
+    return new Response(response.body, { status: response.status, headers })
 }
