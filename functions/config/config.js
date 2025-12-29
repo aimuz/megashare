@@ -39,17 +39,19 @@ export function registerProvider(name, loader) {
 async function load() {
     if (loaded) return;
 
-    for (const { name, loader } of providers) {
-        try {
-            const data = await loader();
-            if (data && typeof data === "object") {
-                providerConfig = { ...providerConfig, ...data };
-            }
-        } catch (e) {
+    const promises = providers.map(({ name, loader }) =>
+        loader().catch(e => {
             console.error(`[Config] Failed to load from provider "${name}":`, e);
+            return null; // 返回 null 以防止 Promise.all 失败
+        })
+    );
+
+    const results = await Promise.all(promises);
+    for (const data of results) {
+        if (data && typeof data === 'object') {
+            providerConfig = { ...providerConfig, ...data };
         }
     }
-
     loaded = true;
 }
 

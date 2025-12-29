@@ -22,11 +22,6 @@ export function getMetadataKV() {
     return getKV(METADATA_NAMESPACE);
 }
 
-// --- Config Helper ---
-function getConfig(key) {
-    return config.get(key);
-}
-
 // --- KV Key Helper ---
 // Base62 字符集（与 upload.js 保持一致）
 const BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
@@ -71,7 +66,7 @@ export function errorResponse(c, message, status = 500) {
 // --- Security Helpers ---
 
 async function getSecretKey() {
-    const secret = getConfig("UPLOAD_SECRET") || "default-dev-secret-please-change";
+    const secret = config.get("UPLOAD_SECRET") || "default-dev-secret-please-change";
     const enc = new TextEncoder();
     return await crypto.subtle.importKey(
         "raw",

@@ -71,8 +71,7 @@ export async function handleGC(c) {
     }
 
     // 2. 获取过期配置
-    const expiryDaysStr = config.get("GC_EXPIRY_DAYS");
-    const expiryDays = expiryDaysStr ? parseInt(expiryDaysStr, 10) : DEFAULT_EXPIRY_DAYS;
+    const expiryDays = config.getInt("GC_EXPIRY_DAYS", DEFAULT_EXPIRY_DAYS);
     const expiryThreshold = Date.now() - expiryDays * 24 * 60 * 60 * 1000;
 
     // 3. 扫描 KV 中的所有 metadata

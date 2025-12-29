@@ -90,7 +90,7 @@ export async function createStorageBackend() {
         throw new Error("No storage backend registered");
     }
 
-    const backendType = config.get("STORAGE_BACKEND") || availableBackends[0];
+    const backendType = config.getString("STORAGE_BACKEND", availableBackends[0]);
     console.debug(`Using storage backend: ${backendType}`);
     const factory = backends[backendType];
     if (!factory) {

@@ -54,8 +54,9 @@ export async function handleUploadStart(c) {
         return errorResponse(c, "Missing or invalid fileSize", 400);
     }
 
-    if (fileSize > getMaxFileSize()) {
-        return errorResponse(c, `File size exceeds limit. Maximum allowed: ${getMaxFileSize()} bytes (20GB)`, 413);
+    const maxFileSize = getMaxFileSize();
+    if (fileSize > maxFileSize) {
+        return errorResponse(c, `File size exceeds limit. Maximum allowed: ${maxFileSize} bytes (20GB)`, 413);
     }
 
     // Calculate expected total chunks
