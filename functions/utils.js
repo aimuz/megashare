@@ -66,7 +66,10 @@ export function errorResponse(c, message, status = 500) {
 // --- Security Helpers ---
 
 async function getSecretKey() {
-    const secret = config.get("UPLOAD_SECRET") || "default-dev-secret-please-change";
+    const secret = config.get("UPLOAD_SECRET");
+    if (!secret) {
+        throw new Error("Required configuration UPLOAD_SECRET is missing.");
+    }
     const enc = new TextEncoder();
     return await crypto.subtle.importKey(
         "raw",
