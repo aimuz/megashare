@@ -167,7 +167,7 @@ export async function handleUploadChunkData(c) {
     const storage = await createStorageBackend();
 
     // 读取请求体数据并代理上传
-    const data = await c.req.arrayBuffer();
+    const data = c.req.body;
     const chunkFileName = `chunk_${chunkIndex}`;
 
     const result = await storage.uploadFile(

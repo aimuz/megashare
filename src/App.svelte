@@ -500,7 +500,7 @@
      * 完成整个上传
      */
     const finalizeUpload = async (fileId, fileMeta, chunkIds, uploadToken) => {
-        await fetch("/api/upload/complete", {
+        const res = await fetch("/api/upload/complete", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -512,6 +512,12 @@
                 chunkIds,
             }),
         });
+        if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(
+                `Upload finalization failed: ${errData.error || res.statusText}`,
+            );
+        }
     };
 
     const processAndUpload = async () => {
@@ -997,7 +1003,7 @@
                                 AES-256-GCM 加密
                             </h3>
                             <p class="text-xs sm:text-sm text-slate-500">
-                                端到端加密，抗量子计算攻击
+                                端到端加密，军用级加密
                             </p>
                         </div>
                     </div>
