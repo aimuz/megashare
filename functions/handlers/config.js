@@ -3,7 +3,7 @@
  * 提供客户端配置信息
  */
 
-import { CHUNK_SIZE, MAX_FILE_SIZE } from "../utils.js";
+import { getChunkSize, getMaxFileSize } from "../utils.js";
 import { createStorageBackend } from "../storage/storage.js";
 
 /**
@@ -19,7 +19,7 @@ export async function handleGetConfig(c) {
     return c.json({
         supportsDirectUrl: storage.supportsDirectUrl,
         supportsDirectUpload: storage.supportsDirectUpload,
-        chunkSize: CHUNK_SIZE,
-        maxFileSize: MAX_FILE_SIZE,
+        chunkSize: getChunkSize(),
+        maxFileSize: getMaxFileSize(),
     });
 }

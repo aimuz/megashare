@@ -4,11 +4,16 @@
  */
 
 import { getKV } from "./kv/kv.js";
-import { getEnv } from "./env/env.js";
+import config from "./config/config.js";
 
-// --- Constants ---
-export const MAX_FILE_SIZE = 20 * 1024 * 1024 * 1024; // 20GB
-export const CHUNK_SIZE = 128 * 1024 * 1024; // 128MB
+// --- Config Helpers ---
+export function getMaxFileSize() {
+    return config.getInt("MAX_FILE_SIZE", 20 * 1024 * 1024 * 1024); // 20GB
+}
+
+export function getChunkSize() {
+    return config.getInt("CHUNK_SIZE", 128 * 1024 * 1024); // 128MB
+}
 
 // --- KV Namespaces ---
 const METADATA_NAMESPACE = "megashare-metadata";
@@ -18,8 +23,8 @@ export function getMetadataKV() {
 }
 
 // --- Config Helper ---
-export function getConfig(key) {
-    return getEnv(key);
+function getConfig(key) {
+    return config.get(key);
 }
 
 // --- KV Key Helper ---
@@ -66,7 +71,7 @@ export function errorResponse(c, message, status = 500) {
 // --- Security Helpers ---
 
 async function getSecretKey() {
-    const secret = (await getConfig("UPLOAD_SECRET")) || "default-dev-secret-please-change";
+    const secret = getConfig("UPLOAD_SECRET") || "default-dev-secret-please-change";
     const enc = new TextEncoder();
     return await crypto.subtle.importKey(
         "raw",

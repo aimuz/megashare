@@ -6,8 +6,8 @@
 import {
     errorResponse,
     getMetadataKV,
-    getConfig,
 } from "../utils.js";
+import config from "../config/config.js";
 import { createStorageBackend } from "../storage/storage.js";
 
 // 默认过期天数
@@ -26,7 +26,7 @@ async function verifyGCToken(request) {
     }
 
     const token = authHeader.slice(7); // 移除 "Bearer " 前缀
-    const gcSecret = getConfig("GC_SECRET");
+    const gcSecret = config.get("GC_SECRET");
 
     if (!gcSecret) {
         return { valid: false, error: "GC_SECRET not configured", status: 500 };
@@ -71,7 +71,7 @@ export async function handleGC(c) {
     }
 
     // 2. 获取过期配置
-    const expiryDaysStr = getConfig("GC_EXPIRY_DAYS");
+    const expiryDaysStr = config.get("GC_EXPIRY_DAYS");
     const expiryDays = expiryDaysStr ? parseInt(expiryDaysStr, 10) : DEFAULT_EXPIRY_DAYS;
     const expiryThreshold = Date.now() - expiryDays * 24 * 60 * 60 * 1000;
 

@@ -17,9 +17,9 @@ import { handleGetConfig } from "./handlers/config.js";
 // 导入 KV 适配器以触发插件注册
 import "./kv/edgekv.js";
 
-// 导入 ENV 适配器以触发插件注册
-import "./env/edgeenv.js";
-import { loadEnv } from "./env/edgeenv.js";
+// 导入 Config Provider 以触发插件注册
+import "./config/providers/edgekv.js";
+import config from "./config/config.js";
 
 // 导入存储后端以触发插件注册
 import "./storage/s3.js";
@@ -38,9 +38,9 @@ app.onError((err, c) => {
     return c.json({ error: message }, status);
 });
 
-// 在所有请求前加载环境变量
+// 在所有请求前加载配置
 app.use("*", async (c, next) => {
-    await loadEnv();
+    await config.load();
     await next();
 });
 
