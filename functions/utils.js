@@ -1,51 +1,66 @@
 /**
  * ESA Edge Function 工具库
- * 提供 HMAC 签名等工具函数
+ * 提供 KV 存储访问、HMAC 签名等工具函数
  */
+
+import { getKV } from "./kv/kv.js";
+import { getEnv } from "./env/env.js";
 
 // --- Constants ---
 export const MAX_FILE_SIZE = 20 * 1024 * 1024 * 1024; // 20GB
-export const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB
+export const CHUNK_SIZE = 128 * 1024 * 1024; // 128MB
 
-// --- KV Config Namespace ---
-const CONFIG_NAMESPACE = "megashare-config";
+// --- KV Namespaces ---
+const METADATA_NAMESPACE = "megashare-metadata";
 
-function getConfigKV() {
-    return new EdgeKV({ namespace: CONFIG_NAMESPACE });
+export function getMetadataKV() {
+    return getKV(METADATA_NAMESPACE);
 }
 
 // --- Config Helper ---
-export async function getConfig(key) {
-    const kv = getConfigKV();
-    return await kv.get(key, { type: "text" });
+export function getConfig(key) {
+    return getEnv(key);
+}
+
+// --- KV Key Helper ---
+// Base62 字符集（与 upload.js 保持一致）
+const BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+// 解码 base62 字符串为数字
+function decodeBase62(str) {
+    let num = 0n;
+    for (const c of str) {
+        const idx = BASE62.indexOf(c);
+        if (idx === -1) return null; // 无效字符
+        num = num * 62n + BigInt(idx);
+    }
+    return Number(num);
+}
+
+/**
+ * 将 fileId 转换为 metadata key
+ * 新格式 fileId: "1Zc3-a3Bx9ZkP" → key: "metadata:1734857999-a3Bx9ZkP"
+ * 旧格式 fileId: "1734857999-xxxx" → key: "metadata:1734857999-xxxx" (兼容)
+ */
+export function getMetadataKey(fileId) {
+    const [firstPart, randomPart] = fileId.split("-");
+
+    // 检测是否为新格式（4字符 base62 小时）
+    if (firstPart.length === 4 && randomPart) {
+        const hour = decodeBase62(firstPart);
+        if (hour !== null) {
+            const timestamp = hour * 3600; // 小时 → 秒
+            return `metadata:${timestamp}-${randomPart}`;
+        }
+    }
+
+    // 旧格式或解析失败，直接使用原 fileId
+    return `metadata:${fileId}`;
 }
 
 // --- Response Helpers ---
-
-export function jsonResponse(data, status = 200) {
-    return new Response(JSON.stringify(data), {
-        status,
-        headers: {
-            "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, X-Upload-Token",
-        },
-    });
-}
-
-export function errorResponse(message, status = 500) {
-    return jsonResponse({ error: message }, status);
-}
-
-export function handleCORS() {
-    return new Response(null, {
-        headers: {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, X-Upload-Token",
-        },
-    });
+export function errorResponse(c, message, status = 500) {
+    return c.json({ error: message }, status);
 }
 
 // --- Security Helpers ---
@@ -63,15 +78,15 @@ async function getSecretKey() {
 }
 
 /**
- * Sign upload payload (fileId + totalChunks)
+ * Sign upload payload (fileId + folderId + totalChunks)
  * Returns: base64url(payload) + "." + base64url(signature)
  */
-export async function signUploadPayload(fileId, totalChunks) {
+export async function signUploadPayload(fileId, folderId, totalChunks) {
     const key = await getSecretKey();
     const enc = new TextEncoder();
 
-    // Create payload: fileId:totalChunks
-    const payload = `${fileId}:${totalChunks}`;
+    // Create payload: fileId:folderId:totalChunks
+    const payload = `${fileId}:${folderId}:${totalChunks}`;
     const payloadB64 = btoa(payload)
         .replace(/\+/g, "-")
         .replace(/\//g, "_")
@@ -104,7 +119,7 @@ export async function verifyUploadToken(fileId, token) {
 
         // Decode payload
         const payload = atob(payloadB64.replace(/-/g, "+").replace(/_/g, "/"));
-        const [tokenFileId, totalChunksStr] = payload.split(":");
+        const [tokenFileId, tokenFolderId, totalChunksStr] = payload.split(":");
 
         // Verify fileId matches
         if (tokenFileId !== fileId) return { valid: false };
@@ -127,9 +142,36 @@ export async function verifyUploadToken(fileId, token) {
         return {
             valid: true,
             fileId: tokenFileId,
+            folderId: tokenFolderId,
             totalChunks: parseInt(totalChunksStr, 10),
         };
     } catch (e) {
         return { valid: false };
     }
+}
+
+// --- Retry Helper ---
+
+/**
+ * 带指数退避的重试函数
+ * @param {Function} fn - 要执行的异步函数
+ * @param {Object} options - 配置选项
+ * @param {number} options.maxRetries - 最大重试次数，默认 3
+ * @param {number} options.baseDelayMs - 基础延迟毫秒，默认 100
+ * @returns {Promise<any>} fn 的返回值
+ * @throws {Error} 重试耗尽后抛出最后一次错误
+ */
+export async function retry(fn, { maxRetries = 3, baseDelayMs = 100 } = {}) {
+    let lastError;
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            return await fn();
+        } catch (err) {
+            lastError = err;
+            if (i < maxRetries - 1) {
+                await new Promise((r) => setTimeout(r, baseDelayMs * Math.pow(2, i)));
+            }
+        }
+    }
+    throw lastError;
 }
