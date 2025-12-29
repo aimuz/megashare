@@ -106,7 +106,11 @@ function getBool(key, defaultValue = false) {
     if (typeof val === "string") {
         return val.toLowerCase() === "true" || val === "1";
     }
-    return Boolean(val);
+    if (typeof val === "number") {
+        return val !== 0;
+    }
+    // For other types like objects and arrays, return the default value.
+    return defaultValue;
 }
 
 /**
