@@ -8,8 +8,8 @@ import {
     verifyUploadToken,
     getMetadataKV,
     getMetadataKey,
-    MAX_FILE_SIZE,
-    CHUNK_SIZE,
+    getMaxFileSize,
+    getChunkSize,
     retry,
 } from "../utils.js";
 import { createStorageBackend } from "../storage/storage.js";
@@ -54,12 +54,13 @@ export async function handleUploadStart(c) {
         return errorResponse(c, "Missing or invalid fileSize", 400);
     }
 
-    if (fileSize > MAX_FILE_SIZE) {
-        return errorResponse(c, `File size exceeds limit. Maximum allowed: ${MAX_FILE_SIZE} bytes (20GB)`, 413);
+    const maxFileSize = getMaxFileSize();
+    if (fileSize > maxFileSize) {
+        return errorResponse(c, `File size exceeds limit. Maximum allowed: ${maxFileSize} bytes (20GB)`, 413);
     }
 
     // Calculate expected total chunks
-    const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
+    const totalChunks = Math.ceil(fileSize / getChunkSize());
 
     // 生成文件 ID（用于标识这次上传）
     // 小时数往后偏移1小时，确保文件至少存活24小时（最多25小时）

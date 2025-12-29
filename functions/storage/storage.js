@@ -3,7 +3,7 @@
  * 提供统一的存储接口，支持多种后端实现
  */
 
-import { getConfig } from "../utils.js";
+import config from "../config/config.js";
 
 /**
  * @typedef {Object} CreateFolderResult
@@ -90,7 +90,7 @@ export async function createStorageBackend() {
         throw new Error("No storage backend registered");
     }
 
-    const backendType = getConfig("STORAGE_BACKEND") || availableBackends[0];
+    const backendType = config.getString("STORAGE_BACKEND", availableBackends[0]);
     console.debug(`Using storage backend: ${backendType}`);
     const factory = backends[backendType];
     if (!factory) {

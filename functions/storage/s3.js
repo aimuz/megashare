@@ -11,17 +11,17 @@ import {
     ListObjectsV2Command,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { getConfig } from "../utils.js";
+import config from "../config/config.js";
 
 // --- 配置获取 ---
 
 function getS3Config() {
-    const endpoint = getConfig("S3_ENDPOINT");
-    const bucket = getConfig("S3_BUCKET");
-    const accessKeyId = getConfig("S3_ACCESS_KEY_ID");
-    const accessKeySecret = getConfig("S3_ACCESS_KEY_SECRET");
-    const region = getConfig("S3_REGION");
-    const prefix = getConfig("S3_PREFIX");
+    const endpoint = config.get("S3_ENDPOINT");
+    const bucket = config.get("S3_BUCKET");
+    const accessKeyId = config.get("S3_ACCESS_KEY_ID");
+    const accessKeySecret = config.get("S3_ACCESS_KEY_SECRET");
+    const region = config.get("S3_REGION");
+    const prefix = config.get("S3_PREFIX");
 
     if (!endpoint || !bucket || !accessKeyId || !accessKeySecret) {
         throw new Error("Missing required S3 configuration (S3_ENDPOINT, S3_BUCKET, S3_ACCESS_KEY_ID, S3_ACCESS_KEY_SECRET)");
@@ -119,8 +119,8 @@ class S3Client {
 class S3Backend {
     constructor(client) {
         this.client = client;
-        this.supportsDirectUrl = true;  // S3 支持预签名 URL
-        this.supportsDirectUpload = true;  // S3 支持预签名上传
+        this.supportsDirectUrl = config.getBool("S3_SUPPORTS_DIRECT_URL", true);
+        this.supportsDirectUpload = config.getBool("S3_SUPPORTS_DIRECT_UPLOAD", true);
         this.supportsFolderDelete = false;  // S3 不支持文件夹概念，需逐个删除
     }
 

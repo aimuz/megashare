@@ -75,6 +75,9 @@ export async function handleGetChunk(c) {
     const response = await storage.streamFile(chunk.fileId);
     const headers = new Headers(response.headers);
     headers.set("Access-Control-Allow-Origin", "*");
-
+    // set cache
+    const ONE_YEAR_IN_SECONDS = 31536000;
+    headers.set("Cache-Control", `public, max-age=${ONE_YEAR_IN_SECONDS}`);
+    headers.set("Expires", new Date(Date.now() + ONE_YEAR_IN_SECONDS * 1000).toUTCString());
     return new Response(response.body, { status: response.status, headers })
 }
