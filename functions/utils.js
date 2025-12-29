@@ -12,7 +12,7 @@ export function getMaxFileSize() {
 }
 
 export function getChunkSize() {
-    return config.getInt("CHUNK_SIZE", 128 * 1024 * 1024); // 128MB
+    return config.getInt("CHUNK_SIZE", 64 * 1024 * 1024); // 64MB
 }
 
 // --- KV Namespaces ---
