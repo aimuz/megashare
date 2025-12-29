@@ -26,6 +26,10 @@ function createEdgeKVAdapter(namespace) {
         async delete(key) {
             await kv.delete(key);
         },
+
+        async list(options = {}) {
+            return kv.list(options);
+        },
     };
 }
 

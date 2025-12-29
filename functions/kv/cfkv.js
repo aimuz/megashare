@@ -69,6 +69,14 @@ function createCloudflareKVAdapter(namespace) {
             const kv = kvBindings[bindingName];
             await kv.delete(key);
         },
+
+        async list(options = {}) {
+            if (!kvBindings || !kvBindings[bindingName]) {
+                throw new Error(`Cloudflare KV binding "${bindingName}" not found`);
+            }
+            const kv = kvBindings[bindingName];
+            return kv.list(options);
+        },
     };
 }
 
