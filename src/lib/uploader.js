@@ -135,7 +135,10 @@ export class FileUploader {
       }),
     });
     if (!res.ok) {
-      console.warn(`Complete notification for chunk ${chunkIndex} failed`);
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(
+        `Chunk ${chunkIndex} completion notification failed: ${errData.error || res.statusText}`,
+      );
     }
   }
 

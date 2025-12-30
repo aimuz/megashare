@@ -187,11 +187,11 @@ class CryptoWorkerBridge {
       this.worker.terminate();
       this.worker = null;
       this.ready = false;
-      this.pendingMessages.clear();
       // Reject all pending promises
       for (const [id, pending] of this.pendingMessages) {
         pending.reject(new Error("Worker destroyed"));
       }
+      this.pendingMessages.clear();
     }
   }
 }

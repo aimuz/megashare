@@ -93,7 +93,7 @@ export async function decryptSensitiveMeta(
   encryptedMeta,
 ) {
   try {
-    const masterKey = await importMasterKey(masterKeyStr);
+    const masterKey = await importMasterKey(decodeBase64(masterKeyStr));
     const ivArray = new Uint8Array(baseIv);
     const metaIv = getChunkIV(ivArray, 0xffffffff);
     const encrypted = Uint8Array.from(atob(encryptedMeta), (c) =>

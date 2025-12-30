@@ -2,7 +2,7 @@
  * 文件下载模块
  */
 
-import { importMasterKey, decryptChunk } from "./crypto.js";
+import { importMasterKey, decryptChunk, decodeBase64 } from "./crypto.js";
 import { withRetry } from "./utils.js";
 import { getDecryptorClass } from "./crypto-config.js";
 
@@ -125,7 +125,7 @@ export class FileDownloader {
    * 执行下载
    */
   async download(masterKeyStr, writable, onProgress) {
-    const masterKey = await importMasterKey(masterKeyStr);
+    const masterKey = await importMasterKey(decodeBase64(masterKeyStr));
     const baseIv = new Uint8Array(this.metaData.iv);
 
     let cumulativeBytes = 0;
