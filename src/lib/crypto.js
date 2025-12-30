@@ -118,12 +118,11 @@ export async function computeHash(data) {
  */
 async function encryptBlock(blockData, masterKey, baseIv, globalIndex) {
   const iv = getChunkIV(baseIv, globalIndex);
-  const encrypted = await window.crypto.subtle.encrypt(
+  return await window.crypto.subtle.encrypt(
     { name: "AES-GCM", iv },
     masterKey,
     blockData,
   );
-  return new Uint8Array(encrypted);
 }
 
 /**
@@ -131,12 +130,11 @@ async function encryptBlock(blockData, masterKey, baseIv, globalIndex) {
  */
 async function decryptBlock(blockData, masterKey, baseIv, globalIndex) {
   const iv = getChunkIV(baseIv, globalIndex);
-  const decrypted = await window.crypto.subtle.decrypt(
+  return await window.crypto.subtle.decrypt(
     { name: "AES-GCM", iv },
     masterKey,
     blockData,
   );
-  return new Uint8Array(decrypted);
 }
 
 /**
@@ -179,8 +177,9 @@ export class StreamEncryptor {
       ) {
         const isLastBlock = done && pendingBuffer.length < this.blockSize;
         const blockEnd = isLastBlock ? pendingBuffer.length : this.blockSize;
-        const blockData = pendingBuffer.slice(0, blockEnd);
-        pendingBuffer = pendingBuffer.slice(blockEnd);
+        // Use subarray to avoid copying
+        const blockData = pendingBuffer.subarray(0, blockEnd);
+        pendingBuffer = pendingBuffer.subarray(blockEnd);
 
         const globalIndex = this.globalBlockOffset + blockIndex;
         try {
@@ -209,7 +208,7 @@ export class StreamEncryptor {
     const encryptedData = await encryptedBlob.arrayBuffer();
     const contentHash = await computeHash(encryptedData);
     return {
-      blob: encryptedBlob,
+      data: encryptedData,
       hash: contentHash,
     };
   }

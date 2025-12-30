@@ -26,12 +26,11 @@ function getChunkIV(baseIv, index) {
  */
 async function encryptBlock(blockData, masterKey, baseIv, globalIndex) {
   const iv = getChunkIV(baseIv, globalIndex);
-  const encrypted = await crypto.subtle.encrypt(
+  return await crypto.subtle.encrypt(
     { name: "AES-GCM", iv },
     masterKey,
     blockData,
   );
-  return new Uint8Array(encrypted);
 }
 
 /**
@@ -39,12 +38,11 @@ async function encryptBlock(blockData, masterKey, baseIv, globalIndex) {
  */
 async function decryptBlock(blockData, masterKey, baseIv, globalIndex) {
   const iv = getChunkIV(baseIv, globalIndex);
-  const decrypted = await crypto.subtle.decrypt(
+  return await crypto.subtle.decrypt(
     { name: "AES-GCM", iv },
     masterKey,
     blockData,
   );
-  return new Uint8Array(decrypted);
 }
 
 /**
@@ -193,10 +191,12 @@ self.addEventListener("message", async (event) => {
 
       case "encrypt-block":
         result = await processEncryptStream(data);
+        self.postMessage({}, [data.data]) // gc
         break;
 
       case "decrypt-block":
         result = await processDecryptStream(data);
+        self.postMessage({}, [data.data]); // gc
         break;
 
       case "encrypt-metadata":
@@ -207,12 +207,25 @@ self.addEventListener("message", async (event) => {
         throw new Error(`Unknown message type: ${type}`);
     }
 
-    // 不使用 transferables，使用结构化克隆
-    self.postMessage({
-      id,
-      type: "success",
-      result,
-    });
+    if (result && typeof result === "object" && "data" in result && result.data instanceof ArrayBuffer) {
+      self.postMessage(
+        {
+          id,
+          type: "success",
+          result,
+        },
+        [result.data],
+      );
+      return;
+    }
+
+    self.postMessage(
+      {
+        id,
+        type: "success",
+        result,
+      },
+    );
   } catch (error) {
     self.postMessage({
       id,

@@ -65,8 +65,9 @@ export class WorkerStreamEncryptor {
         ) {
           const isLastBlock = done && pendingBuffer.length < this.blockSize;
           const blockEnd = isLastBlock ? pendingBuffer.length : this.blockSize;
-          const blockData = pendingBuffer.slice(0, blockEnd);
-          pendingBuffer = pendingBuffer.slice(blockEnd);
+          // Use subarray to avoid copying
+          const blockData = pendingBuffer.subarray(0, blockEnd);
+          pendingBuffer = pendingBuffer.subarray(blockEnd);
 
           // 加密（使用 keyId）
           const encryptedBlock = await this.worker.encryptBlock(
@@ -93,7 +94,7 @@ export class WorkerStreamEncryptor {
       const contentHash = await this.worker.computeHash(encryptedData);
 
       return {
-        blob: encryptedBlob,
+        data: encryptedData,
         hash: contentHash,
       };
     } finally {
@@ -171,8 +172,9 @@ export class WorkerStreamDecryptor {
           const blockEnd = isLastBlock
             ? pendingBuffer.length
             : this.encryptedBlockSizeWithTag;
-          const blockData = pendingBuffer.slice(0, blockEnd);
-          pendingBuffer = pendingBuffer.slice(blockEnd);
+          // Use subarray to avoid copying
+          const blockData = pendingBuffer.subarray(0, blockEnd);
+          pendingBuffer = pendingBuffer.subarray(blockEnd);
 
           // 解密（使用 keyId）
           const decrypted = await this.worker.decryptBlock(

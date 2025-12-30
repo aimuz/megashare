@@ -164,9 +164,7 @@ export class FileUploader {
       ENCRYPTION_BLOCK_SIZE,
     );
 
-    const { blob, hash } = await encryptor.processStream(fileSlice);
-    const contentHash = hash;
-    const encryptedData = await blob.arrayBuffer();
+    const { data: encryptedData, hash: contentHash } = await encryptor.processStream(fileSlice);
 
     // 上传
     const chunkFileId = await withRetry(async () => {

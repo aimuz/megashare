@@ -114,14 +114,30 @@ class CryptoWorkerBridge {
    * @param {string} keyId - 密钥唯一标识
    */
   async encryptBlock(keyId, blockData, baseIv, globalBlockOffset, blockIndex) {
-    // 不使用 transfer，使用结构化克隆（更稳定）
-    const result = await this._sendMessage("encrypt-block", {
-      keyId,
-      blockData,
-      baseIv,
-      globalBlockOffset,
-      blockIndex,
-    });
+    let dataToTransfer = blockData;
+    let transferables = [];
+
+    // Ensure we have a clean buffer to transfer
+    if (blockData.buffer.byteLength !== blockData.byteLength) {
+      // It's a view of a larger buffer, we MUST copy to transfer only this part
+      // and not detach the main buffer.
+      dataToTransfer = blockData.slice();
+    }
+
+    // Now dataToTransfer is own buffer or full buffer.
+    transferables.push(dataToTransfer.buffer);
+
+    const result = await this._sendMessage(
+      "encrypt-block",
+      {
+        keyId,
+        blockData: dataToTransfer,
+        baseIv,
+        globalBlockOffset,
+        blockIndex,
+      },
+      transferables
+    );
     return result.data;
   }
 
@@ -130,14 +146,25 @@ class CryptoWorkerBridge {
    * @param {string} keyId - 密钥唯一标识
    */
   async decryptBlock(keyId, blockData, baseIv, globalBlockOffset, blockIndex) {
-    // 不使用 transfer，使用结构化克隆（更稳定）
-    const result = await this._sendMessage("decrypt-block", {
-      keyId,
-      blockData,
-      baseIv,
-      globalBlockOffset,
-      blockIndex,
-    });
+    let dataToTransfer = blockData;
+    const transferables = [];
+
+    if (blockData.buffer.byteLength !== blockData.byteLength) {
+      dataToTransfer = blockData.slice();
+    }
+    transferables.push(dataToTransfer.buffer);
+
+    const result = await this._sendMessage(
+      "decrypt-block",
+      {
+        keyId,
+        blockData: dataToTransfer,
+        baseIv,
+        globalBlockOffset,
+        blockIndex,
+      },
+      transferables
+    );
     return result.data;
   }
 

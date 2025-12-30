@@ -120,7 +120,7 @@ export class FileDownloader {
       return await decryptChunk(encryptedData, masterKey, baseIv, chunkIndex);
     });
 
-    await writable.write(new Uint8Array(decryptedBuffer));
+    await writable.write(decryptedBuffer);
     return chunkBaseBytes + decryptedBuffer.byteLength;
   }
 
