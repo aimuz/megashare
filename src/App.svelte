@@ -383,17 +383,8 @@
         }
 
         // 合并所有加密块
-        const totalLength = encryptedBlocks.reduce(
-            (sum, b) => sum + b.byteLength,
-            0,
-        );
-        const result = new Uint8Array(totalLength);
-        let offset = 0;
-        for (const block of encryptedBlocks) {
-            result.set(block, offset);
-            offset += block.byteLength;
-        }
-        return result.buffer;
+        const blob = new Blob(encryptedBlocks);
+        return blob.arrayBuffer();
     };
 
     /**
@@ -697,7 +688,7 @@
                 totalChunks,
                 encryptedMeta,
                 encryptionBlockSize: ENCRYPTION_BLOCK_SIZE,
-                blockSize: serverConfig.chunkSize,
+                chunkSize: serverConfig.chunkSize,
             };
 
             await finalizeUpload(
@@ -904,22 +895,26 @@
                 for (let i = 0; i < metaData.totalChunks; i++) {
                     const chunkBaseBytes = cumulativeBytes;
 
+                    // 兼容，曾经命名为 blockSize，现在命名为 chunkSize
+                    const chunkSize = metaData.chunkSize || metaData.blockSize;
                     // 根据 metadata 判断使用新旧解密方式
-                    if (metaData.encryptionBlockSize && metaData.blockSize) {
+                    if (metaData.encryptionBlockSize && chunkSize) {
+                        let chunkWritePosition = chunkBaseBytes;
                         // 新加密：真正的流式处理，边下载边解密边写入
                         await withRetry(async () => {
                             downloadedBytes = chunkBaseBytes;
-
+                            await writable.seek(chunkWritePosition);
                             await streamFetchAndDecrypt(
                                 getChunkURL(i),
                                 masterKey,
                                 baseIv,
                                 i,
                                 metaData.encryptionBlockSize,
-                                metaData.blockSize,
+                                chunkSize,
                                 async (decrypted) => {
                                     await writable.write(decrypted);
                                     cumulativeBytes += decrypted.byteLength;
+                                    chunkWritePosition += decrypted.byteLength;
                                 },
                                 (bytes, total) =>
                                     updateProgress(
