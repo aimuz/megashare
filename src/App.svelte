@@ -14,6 +14,14 @@
         Clock,
     } from "lucide-svelte";
     import { showSaveFilePicker } from "native-file-system-adapter";
+    import {
+        withRetry,
+        formatSpeed,
+        formatBytes,
+        formatETA,
+        formatTimeRemaining,
+        SpeedTracker,
+    } from "./lib/utils.js";
 
     // --- Server Configuration (single source of truth) ---
     let serverConfig = $state({
@@ -25,128 +33,6 @@
 
     // Fixed encryption block size (1MB)
     const ENCRYPTION_BLOCK_SIZE = 1024 * 1024;
-
-    // Retry helper with exponential backoff
-    const MAX_RETRIES = 3;
-    const RETRY_DELAY_MS = 1000;
-
-    const withRetry = async (
-        fn,
-        retries = MAX_RETRIES,
-        delayMs = RETRY_DELAY_MS,
-    ) => {
-        let lastError;
-        for (let attempt = 0; attempt <= retries; attempt++) {
-            try {
-                return await fn();
-            } catch (err) {
-                lastError = err;
-                if (attempt < retries) {
-                    const delay = delayMs * Math.pow(2, attempt); // Exponential backoff
-                    console.warn(
-                        `Attempt ${attempt + 1} failed, retrying in ${delay}ms...`,
-                        err.message,
-                    );
-                    await new Promise((r) => setTimeout(r, delay));
-                }
-            }
-        }
-        throw lastError;
-    };
-
-    const formatUnit = (value, units) => {
-        if (!value || value <= 0) return `0 ${units[0]}`;
-        const i = Math.min(
-            Math.floor(Math.log(value) / Math.log(1024)),
-            units.length - 1,
-        );
-        return `${(value / Math.pow(1024, i)).toFixed(2)} ${units[i]}`;
-    };
-
-    const formatSpeed = (bps) =>
-        formatUnit(bps, ["B/s", "KB/s", "MB/s", "GB/s"]);
-    const formatBytes = (bytes) =>
-        formatUnit(bytes, ["B", "KB", "MB", "GB", "TB"]);
-
-    // Helper to format ETA
-    const formatETA = (seconds) => {
-        if (!seconds || seconds === Infinity || seconds < 0) return "";
-        if (seconds < 60) return `${Math.ceil(seconds)} 秒`;
-        if (seconds < 3600)
-            return `${Math.floor(seconds / 60)} 分 ${Math.ceil(seconds % 60)} 秒`;
-        return `${Math.floor(seconds / 3600)} 时 ${Math.floor((seconds % 3600) / 60)} 分`;
-    };
-
-    // Helper to format remaining time for file expiry (hours/minutes)
-    const formatTimeRemaining = (ms) => {
-        if (!ms || ms <= 0) return null;
-        const hours = Math.floor(ms / (1000 * 60 * 60));
-        const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
-        if (hours > 0) return `${hours} 小时 ${minutes} 分钟`;
-        if (minutes > 0) return `${minutes} 分钟`;
-        return "即将过期";
-    };
-
-    // Real-time speed tracker using sliding window with EMA smoothing
-    class SpeedTracker {
-        constructor(windowMs = 2000) {
-            this.windowMs = windowMs;
-            this.samples = []; // {timestamp, bytes}
-            this.smoothedSpeed = 0;
-            this.smoothingFactor = 0.3; // EMA alpha: lower = smoother, higher = more responsive
-        }
-
-        record(bytes) {
-            const now = Date.now();
-            this.samples.push({ timestamp: now, bytes });
-            // Remove samples outside the window
-            const cutoff = now - this.windowMs;
-            while (
-                this.samples.length > 0 &&
-                this.samples[0].timestamp < cutoff
-            ) {
-                this.samples.shift();
-            }
-        }
-
-        speed() {
-            if (this.samples.length < 2) return this.smoothedSpeed;
-
-            const now = Date.now();
-            const cutoff = now - this.windowMs;
-            // Filter samples within window
-            const windowSamples = this.samples.filter(
-                (s) => s.timestamp >= cutoff,
-            );
-            if (windowSamples.length < 2) return this.smoothedSpeed;
-
-            // Require minimum elapsed time to avoid division by tiny values
-            const elapsed = (now - windowSamples[0].timestamp) / 1000;
-            if (elapsed < 0.5) return this.smoothedSpeed; // Need at least 500ms of data
-
-            const totalBytes = windowSamples.reduce(
-                (sum, s) => sum + s.bytes,
-                0,
-            );
-
-            let rawSpeed = totalBytes / elapsed;
-
-            // Cap unrealistic speeds (max 1GB/s)
-            const MAX_SPEED = 1024 * 1024 * 1024;
-            rawSpeed = Math.min(rawSpeed, MAX_SPEED);
-
-            // Apply exponential moving average for smoothing
-            if (this.smoothedSpeed === 0) {
-                this.smoothedSpeed = rawSpeed;
-            } else {
-                this.smoothedSpeed =
-                    this.smoothingFactor * rawSpeed +
-                    (1 - this.smoothingFactor) * this.smoothedSpeed;
-            }
-
-            return this.smoothedSpeed;
-        }
-    }
 
     // Generate a Master Key for the file
     const generateMasterKey = async () => {
@@ -466,9 +352,9 @@
             xhr.onload = () => {
                 if (xhr.status >= 200 && xhr.status < 300) {
                     resolve();
-                } else {
-                    reject(new Error(`Upload failed: ${xhr.status}`));
+                    return;
                 }
+                reject(new Error(`Upload failed: ${xhr.status}`));
             };
 
             xhr.onerror = () => reject(new Error("Network error"));
