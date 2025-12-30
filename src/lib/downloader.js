@@ -68,16 +68,14 @@ export class FileDownloader {
     chunkBaseBytes,
     onProgress,
   ) {
-    let chunkWritePosition = chunkBaseBytes;
     let cumulativeBytes = chunkBaseBytes;
 
+    // 动态获取解密器类（支持 Worker 或主线程）
+    const DecryptorClass = await getDecryptorClass();
+    const chunkSize = this.metaData.chunkSize || this.metaData.blockSize;
     await withRetry(async () => {
-      await writable.seek(chunkWritePosition);
-      const chunkSize = this.metaData.chunkSize || this.metaData.blockSize;
-
-      // 动态获取解密器类（支持 Worker 或主线程）
-      const DecryptorClass = await getDecryptorClass();
-
+      cumulativeBytes = chunkBaseBytes
+      await writable.seek(chunkBaseBytes);
       const decryptor = new DecryptorClass(
         masterKey,
         baseIv,
@@ -91,9 +89,8 @@ export class FileDownloader {
         async (decrypted) => {
           await writable.write(decrypted);
           cumulativeBytes += decrypted.byteLength;
-          chunkWritePosition += decrypted.byteLength;
         },
-        (bytes, total) => onProgress(bytes, chunkBaseBytes + total),
+        (bytes, total) => onProgress(bytes, cumulativeBytes),
       );
     });
 
