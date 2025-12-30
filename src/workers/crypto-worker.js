@@ -191,12 +191,10 @@ self.addEventListener("message", async (event) => {
 
       case "encrypt-block":
         result = await processEncryptStream(data);
-        self.postMessage({}, [data.data]) // gc
         break;
 
       case "decrypt-block":
         result = await processDecryptStream(data);
-        self.postMessage({}, [data.data]); // gc
         break;
 
       case "encrypt-metadata":
@@ -207,24 +205,17 @@ self.addEventListener("message", async (event) => {
         throw new Error(`Unknown message type: ${type}`);
     }
 
+    const transferables = [];
     if (result && typeof result === "object" && "data" in result && result.data instanceof ArrayBuffer) {
-      self.postMessage(
-        {
-          id,
-          type: "success",
-          result,
-        },
-        [result.data],
-      );
-      return;
+      transferables.push(result.data);
     }
-
     self.postMessage(
       {
         id,
         type: "success",
         result,
       },
+      transferables,
     );
   } catch (error) {
     self.postMessage({
