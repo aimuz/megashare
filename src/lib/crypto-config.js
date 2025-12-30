@@ -3,6 +3,9 @@
  * 可选择使用主线程加密或 Worker 加密
  */
 
+const { StreamEncryptor, StreamDecryptor } = await import("./crypto.js");
+
+
 export const ENCRYPTION_BLOCK_SIZE = 1024 * 1024;
 
 // 默认配置
@@ -25,7 +28,6 @@ export async function getEncryptorClass() {
       await import("./crypto-worker-streams.js");
     return WorkerStreamEncryptor;
   } else {
-    const { StreamEncryptor } = await import("./crypto.js");
     return StreamEncryptor;
   }
 }
@@ -39,7 +41,6 @@ export async function getDecryptorClass() {
       await import("./crypto-worker-streams.js");
     return WorkerStreamDecryptor;
   } else {
-    const { StreamDecryptor } = await import("./crypto.js");
     return StreamDecryptor;
   }
 }
