@@ -48,10 +48,14 @@ export const formatBytes = (bytes) =>
 
 export const formatETA = (seconds) => {
     if (!seconds || seconds === Infinity || seconds < 0) return "";
-    if (seconds < 60) return `${Math.ceil(seconds)} 秒`;
-    if (seconds < 3600)
-        return `${Math.floor(seconds / 60)} 分 ${Math.ceil(seconds % 60)} 秒`;
-    return `${Math.floor(seconds / 3600)} 时 ${Math.floor((seconds % 3600) / 60)} 分`;
+    const totalSeconds = Math.ceil(seconds);
+    if (totalSeconds < 60) {
+        return `${totalSeconds} 秒`;
+    }
+    if (totalSeconds < 3600) {
+        return `${Math.floor(totalSeconds / 60)} 分 ${totalSeconds % 60} 秒`;
+    }
+    return `${Math.floor(totalSeconds / 3600)} 时 ${Math.floor((totalSeconds % 3600) / 60)} 分`;
 };
 
 export const formatTimeRemaining = (ms) => {
