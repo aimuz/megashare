@@ -65,7 +65,7 @@ async function processEncryptStream(data) {
     globalIndex,
   );
 
-  // 不使用 transfer，使用结构化克隆
+  // `result.data` 中的 ArrayBuffer 使用 Transferable Objects 进行零拷贝传输
   return {
     type: "encrypted-block",
     blockIndex,
@@ -93,7 +93,8 @@ async function processDecryptStream(data) {
     globalIndex,
   );
 
-  // 不使用 transfer，使用结构化克隆
+
+  // `result.data` 中的 ArrayBuffer 使用 Transferable Objects 进行零拷贝传输
   return {
     type: "decrypted-block",
     blockIndex,
