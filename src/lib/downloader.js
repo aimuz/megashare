@@ -74,7 +74,7 @@ export class FileDownloader {
     const DecryptorClass = await getDecryptorClass();
     const chunkSize = this.metaData.chunkSize || this.metaData.blockSize;
     await withRetry(async () => {
-      cumulativeBytes = chunkBaseBytes
+      cumulativeBytes = chunkBaseBytes;
       await writable.seek(chunkBaseBytes);
       const decryptor = new DecryptorClass(
         masterKey,
