@@ -115,3 +115,10 @@ export class SpeedTracker {
     return this.smoothedSpeed;
   }
 }
+
+export function appendBuffer(buffer1, buffer2) {
+  const newBuffer = new Uint8Array(buffer1.length + buffer2.length);
+  newBuffer.set(buffer1);
+  newBuffer.set(buffer2, buffer1.length);
+  return newBuffer;
+}

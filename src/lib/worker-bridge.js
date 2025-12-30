@@ -61,7 +61,7 @@ class CryptoWorkerBridge {
   }
 
   /**
-   * 发送消息到 Worker（零拷贝优化）
+   * 发送消息到 Worker，可选支持零拷贝
    */
   async _sendMessage(type, data, transferables = []) {
     if (!this.ready) {
@@ -79,10 +79,20 @@ class CryptoWorkerBridge {
   }
 
   /**
-   * 设置主密钥（只传一次，避免重复传输）
+   * 设置主密钥（支持多个并发会话）
+   * @param {string} keyId - 密钥唯一标识
+   * @param {ArrayBuffer} masterKeyRaw - 原始密钥数据
    */
-  async setMasterKey(masterKeyRaw) {
-    return this._sendMessage("set-master-key", { masterKeyRaw });
+  async setMasterKey(keyId, masterKeyRaw) {
+    return this._sendMessage("set-master-key", { keyId, masterKeyRaw });
+  }
+
+  /**
+   * 释放密钥缓存
+   * @param {string} keyId - 密钥唯一标识
+   */
+  async releaseKey(keyId) {
+    return this._sendMessage("release-key", { keyId });
   }
 
   /**
@@ -101,35 +111,33 @@ class CryptoWorkerBridge {
 
   /**
    * 加密单个块
+   * @param {string} keyId - 密钥唯一标识
    */
-  async encryptBlock(blockData, baseIv, globalBlockOffset, blockIndex) {
+  async encryptBlock(keyId, blockData, baseIv, globalBlockOffset, blockIndex) {
     // 不使用 transfer，使用结构化克隆（更稳定）
-    const result = await this._sendMessage(
-      "encrypt-block",
-      {
-        blockData,
-        baseIv,
-        globalBlockOffset,
-        blockIndex,
-      },
-    );
+    const result = await this._sendMessage("encrypt-block", {
+      keyId,
+      blockData,
+      baseIv,
+      globalBlockOffset,
+      blockIndex,
+    });
     return result.data;
   }
 
   /**
    * 解密单个块
+   * @param {string} keyId - 密钥唯一标识
    */
-  async decryptBlock(blockData, baseIv, globalBlockOffset, blockIndex) {
+  async decryptBlock(keyId, blockData, baseIv, globalBlockOffset, blockIndex) {
     // 不使用 transfer，使用结构化克隆（更稳定）
-    const result = await this._sendMessage(
-      "decrypt-block",
-      {
-        blockData,
-        baseIv,
-        globalBlockOffset,
-        blockIndex,
-      },
-    );
+    const result = await this._sendMessage("decrypt-block", {
+      keyId,
+      blockData,
+      baseIv,
+      globalBlockOffset,
+      blockIndex,
+    });
     return result.data;
   }
 

@@ -2,8 +2,7 @@
  * 加密相关工具函数
  */
 
-// 固定加密块大小 (1MB)
-export const ENCRYPTION_BLOCK_SIZE = 1024 * 1024;
+import { appendBuffer } from "./utils";
 
 /**
  * 生成主密钥
@@ -151,12 +150,14 @@ export class StreamEncryptor {
     this.blockSize = blockSize;
     this.blocksPerChunk = Math.ceil(chunkSize / blockSize);
     this.globalBlockOffset = chunkIndex * this.blocksPerChunk;
-    this.encryptedBlocks = [];
   }
 
   async processStream(fileSlice, onEncrypted, onProgress) {
     const stream = fileSlice.stream();
     const reader = stream.getReader();
+
+    // 用于累积加密块（边加密边累积，用于创建 Blob）
+    const encryptedBlocks = [];
 
     let pendingBuffer = new Uint8Array(0);
     let blockIndex = 0;
@@ -168,7 +169,7 @@ export class StreamEncryptor {
       if (value) {
         totalRead += value.byteLength;
         onProgress?.(value.byteLength, totalRead);
-        pendingBuffer = this._appendBuffer(pendingBuffer, value);
+        pendingBuffer = appendBuffer(pendingBuffer, value);
       }
 
       // 处理完整的加密块
@@ -182,16 +183,21 @@ export class StreamEncryptor {
         pendingBuffer = pendingBuffer.slice(blockEnd);
 
         const globalIndex = this.globalBlockOffset + blockIndex;
-        const encryptedBlock = await encryptBlock(
-          blockData,
-          this.masterKey,
-          this.baseIv,
-          globalIndex,
-        );
-
-        this.encryptedBlocks.push(encryptedBlock);
-        onEncrypted?.(encryptedBlock);
-        blockIndex++;
+        try {
+          const encryptedBlock = await encryptBlock(
+            blockData,
+            this.masterKey,
+            this.baseIv,
+            globalIndex,
+          );
+          encryptedBlocks.push(encryptedBlock);
+          onEncrypted?.(encryptedBlock);
+          blockIndex++;
+        } catch (err) {
+          throw new Error(
+            `Failed to encrypt block ${blockIndex} (global ${globalIndex}): ${err.message}`,
+          );
+        }
 
         if (isLastBlock) break;
       }
@@ -199,14 +205,13 @@ export class StreamEncryptor {
       if (done) break;
     }
 
-    return new Blob(this.encryptedBlocks);
-  }
-
-  _appendBuffer(buffer1, buffer2) {
-    const newBuffer = new Uint8Array(buffer1.length + buffer2.length);
-    newBuffer.set(buffer1);
-    newBuffer.set(buffer2, buffer1.length);
-    return newBuffer;
+    const encryptedBlob = new Blob(encryptedBlocks);
+    const encryptedData = await encryptedBlob.arrayBuffer();
+    const contentHash = await computeHash(encryptedData);
+    return {
+      blob: encryptedBlob,
+      hash: contentHash,
+    };
   }
 }
 
@@ -241,7 +246,7 @@ export class StreamDecryptor {
       if (value) {
         totalReceived += value.byteLength;
         onProgress?.(value.byteLength, totalReceived);
-        pendingBuffer = this._appendBuffer(pendingBuffer, value);
+        pendingBuffer = appendBuffer(pendingBuffer, value);
       }
 
       // 处理完整的加密块
@@ -273,13 +278,6 @@ export class StreamDecryptor {
 
       if (done) break;
     }
-  }
-
-  _appendBuffer(buffer1, buffer2) {
-    const newBuffer = new Uint8Array(buffer1.length + buffer2.length);
-    newBuffer.set(buffer1);
-    newBuffer.set(buffer2, buffer1.length);
-    return newBuffer;
   }
 }
 

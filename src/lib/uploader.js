@@ -7,11 +7,9 @@ import {
   importMasterKey,
   hashData,
   encryptSensitiveMeta,
-  computeHash,
-  ENCRYPTION_BLOCK_SIZE,
 } from "./crypto.js";
 import { withRetry } from "./utils.js";
-import { getEncryptorClass } from "./crypto-config.js";
+import { getEncryptorClass, ENCRYPTION_BLOCK_SIZE } from "./crypto-config.js";
 
 /**
  * 上传器类
@@ -166,9 +164,9 @@ export class FileUploader {
       ENCRYPTION_BLOCK_SIZE,
     );
 
-    const encryptedBlob = await encryptor.processStream(fileSlice);
-    const encryptedData = await encryptedBlob.arrayBuffer();
-    const contentHash = await computeHash(encryptedData);
+    const { blob, hash } = await encryptor.processStream(fileSlice);
+    const contentHash = hash;
+    const encryptedData = await blob.arrayBuffer();
 
     // 上传
     const chunkFileId = await withRetry(async () => {

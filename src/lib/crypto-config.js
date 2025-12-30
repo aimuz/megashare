@@ -3,6 +3,8 @@
  * 可选择使用主线程加密或 Worker 加密
  */
 
+export const ENCRYPTION_BLOCK_SIZE = 1024 * 1024;
+
 // 默认配置
 export const CryptoConfig = {
   // 是否使用 Web Worker 进行加密/解密
@@ -11,7 +13,7 @@ export const CryptoConfig = {
   useWorker: true,
 
   // 加密块大小 (1MB)
-  encryptionBlockSize: 1024 * 1024,
+  encryptionBlockSize: ENCRYPTION_BLOCK_SIZE,
 };
 
 /**

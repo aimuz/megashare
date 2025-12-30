@@ -2,17 +2,13 @@
  * Crypto Worker - 在独立线程处理加密/解密操作
  * 避免阻塞主线程 UI
  *
- * 零拷贝优化：
- * 1. 使用 Transferable Objects 传输数据
- * 2. 缓存 masterKey，避免重复传输
- * 3. 返回数据时也使用 transfer
+ * 优化：
+ * 1. 缓存 masterKey，避免重复传输和导入
+ * 2. 支持多个并发会话（使用 keyId 区分）
  */
 
-// 固定加密块大小 (1MB)
-const ENCRYPTION_BLOCK_SIZE = 1024 * 1024;
-
-// 缓存的主密钥（避免重复导入）
-let cachedMasterKey = null;
+// 缓存的主密钥 Map（keyId -> CryptoKey）
+const keyCache = new Map();
 
 /**
  * 为特定块索引派生 IV
@@ -55,17 +51,18 @@ async function decryptBlock(blockData, masterKey, baseIv, globalIndex) {
  * 处理加密流
  */
 async function processEncryptStream(data) {
-  const { blockData, baseIv, globalBlockOffset, blockIndex } = data;
+  const { blockData, baseIv, globalBlockOffset, blockIndex, keyId } = data;
 
-  // 使用缓存的 masterKey
-  if (!cachedMasterKey) {
-    throw new Error("Master key not set. Call setMasterKey first.");
+  // 使用指定 keyId 的密钥
+  const masterKey = keyCache.get(keyId);
+  if (!masterKey) {
+    throw new Error(`Master key not found for keyId: ${keyId}. Call setMasterKey first.`);
   }
 
   const globalIndex = globalBlockOffset + blockIndex;
   const encrypted = await encryptBlock(
     blockData,
-    cachedMasterKey,
+    masterKey,
     baseIv,
     globalIndex,
   );
@@ -82,17 +79,18 @@ async function processEncryptStream(data) {
  * 处理解密流
  */
 async function processDecryptStream(data) {
-  const { blockData, baseIv, globalBlockOffset, blockIndex } = data;
+  const { blockData, baseIv, globalBlockOffset, blockIndex, keyId } = data;
 
-  // 使用缓存的 masterKey
-  if (!cachedMasterKey) {
-    throw new Error("Master key not set. Call setMasterKey first.");
+  // 使用指定 keyId 的密钥
+  const masterKey = keyCache.get(keyId);
+  if (!masterKey) {
+    throw new Error(`Master key not found for keyId: ${keyId}. Call setMasterKey first.`);
   }
 
   const globalIndex = globalBlockOffset + blockIndex;
   const decrypted = await decryptBlock(
     blockData,
-    cachedMasterKey,
+    masterKey,
     baseIv,
     globalIndex,
   );
@@ -166,14 +164,22 @@ self.addEventListener("message", async (event) => {
 
     switch (type) {
       case "set-master-key":
-        // 缓存主密钥（只导入一次）
-        cachedMasterKey = await crypto.subtle.importKey(
+        // 缓存主密钥（支持多个并发会话）
+        const { keyId, masterKeyRaw } = data;
+        const masterKey = await crypto.subtle.importKey(
           "raw",
-          data.masterKeyRaw,
+          masterKeyRaw,
           "AES-GCM",
           true,
           ["encrypt", "decrypt"],
         );
+        keyCache.set(keyId, masterKey);
+        result = { success: true };
+        break;
+
+      case "release-key":
+        // 释放密钥缓存
+        keyCache.delete(data.keyId);
         result = { success: true };
         break;
 

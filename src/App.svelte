@@ -24,6 +24,7 @@
     import { decryptSensitiveMeta, hashData } from "./lib/crypto.js";
     import { FileUploader } from "./lib/uploader.js";
     import { FileDownloader } from "./lib/downloader.js";
+    import { destroyCryptoWorker } from "./lib/worker-bridge.js";
 
     // ===== State =====
     let serverConfig = $state({
@@ -69,6 +70,11 @@
 
         // Fetch server config
         fetchServerConfig();
+
+        return () => {
+            // 在组件销毁时终止 worker
+            destroyCryptoWorker();
+        };
     });
 
     async function fetchServerConfig() {
