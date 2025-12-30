@@ -90,7 +90,7 @@ export class FileDownloader {
           await writable.write(decrypted);
           cumulativeBytes += decrypted.byteLength;
         },
-        (bytes, total) => onProgress(bytes, cumulativeBytes),
+        (bytes, total) => onProgress(bytes, chunkBaseBytes + total),
       );
     });
 

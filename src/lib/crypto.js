@@ -267,8 +267,8 @@ export class StreamDecryptor {
         const blockEnd = isLastBlock
           ? pendingBuffer.length
           : this.encryptedBlockSizeWithTag;
-        const blockData = pendingBuffer.slice(0, blockEnd);
-        pendingBuffer = pendingBuffer.slice(blockEnd);
+        const blockData = pendingBuffer.subarray(0, blockEnd);
+        pendingBuffer = pendingBuffer.subarray(blockEnd);
 
         const globalIndex = this.globalBlockOffset + blockIndex;
         const decrypted = await decryptBlock(
