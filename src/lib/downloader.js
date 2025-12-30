@@ -124,13 +124,7 @@ export class FileDownloader {
   /**
    * 执行下载
    */
-  async download(
-    masterKeyStr,
-    writable,
-    speedTracker,
-    onProgress,
-    onStatusUpdate,
-  ) {
+  async download(masterKeyStr, writable, onProgress) {
     const masterKey = await importMasterKey(masterKeyStr);
     const baseIv = new Uint8Array(this.metaData.iv);
 
@@ -147,9 +141,8 @@ export class FileDownloader {
           baseIv,
           chunkBaseBytes,
           (bytes, total) => {
-            speedTracker.record(bytes);
             this.downloadedBytes = total;
-            onProgress();
+            onProgress(bytes, total);
           },
         );
       } else {
@@ -160,9 +153,8 @@ export class FileDownloader {
           baseIv,
           chunkBaseBytes,
           (bytes, total) => {
-            speedTracker.record(bytes);
             this.downloadedBytes = total;
-            onProgress();
+            onProgress(bytes, total);
           },
         );
       }

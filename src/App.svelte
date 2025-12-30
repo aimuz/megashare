@@ -149,7 +149,8 @@
             const uploader = new FileUploader(file, serverConfig);
             const speedTracker = new SpeedTracker(10000);
 
-            const updateProgress = () => {
+            const updateProgress = (bytes, total) => {
+                speedTracker.record(bytes);
                 const speed = speedTracker.speed();
                 const remaining = uploader.totalBytes - uploader.uploadedBytes;
                 const eta = speed > 0 ? remaining / speed : 0;
@@ -170,7 +171,6 @@
             };
 
             const { fileId, masterKeyStr } = await uploader.upload(
-                speedTracker,
                 updateProgress,
                 onStatusUpdate,
             );
@@ -211,7 +211,8 @@
             const downloader = new FileDownloader(urlParams.id, metaData);
             const speedTracker = new SpeedTracker(2000);
 
-            const updateProgress = () => {
+            const updateProgress = (bytes, total) => {
+                speedTracker.record(bytes);
                 const speed = speedTracker.speed();
                 const remaining =
                     downloader.totalBytes - downloader.downloadedBytes;
@@ -228,17 +229,11 @@
                 };
             };
 
-            const onStatusUpdate = (update) => {
-                statusInfo = { ...statusInfo, ...update };
-            };
-
             try {
                 await downloader.download(
                     urlParams.key,
                     writable,
-                    speedTracker,
                     updateProgress,
-                    onStatusUpdate,
                 );
                 await writable.close();
             } catch (err) {

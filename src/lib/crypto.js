@@ -13,25 +13,37 @@ export async function generateMasterKey() {
     true,
     ["encrypt", "decrypt"],
   );
-  const exported = await window.crypto.subtle.exportKey("raw", key);
+  return key
+}
+
+export async function exportMasterKey(key) {
+  const rawKey = await window.crypto.subtle.exportKey("raw", key);
+  return encodeBase64(rawKey)
+}
+
+/**
+ * 导入主密钥
+ */
+export async function importMasterKey(rawKey) {
+  return await window.crypto.subtle.importKey("raw", rawKey, "AES-GCM", true, [
+    "encrypt",
+    "decrypt",
+  ]);
+}
+
+export function encodeBase64(exported) {
   return btoa(String.fromCharCode(...new Uint8Array(exported)))
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=/g, "");
 }
 
-/**
- * 导入主密钥
- */
-export async function importMasterKey(base64Key) {
+export function decodeBase64(base64Key) {
   const rawKey = Uint8Array.from(
     atob(base64Key.replace(/-/g, "+").replace(/_/g, "/")),
     (c) => c.charCodeAt(0),
   );
-  return await window.crypto.subtle.importKey("raw", rawKey, "AES-GCM", true, [
-    "encrypt",
-    "decrypt",
-  ]);
+  return rawKey;
 }
 
 /**
@@ -43,10 +55,7 @@ export async function hashData(dataStr) {
     "SHA-256",
     enc.encode(dataStr),
   );
-  return btoa(String.fromCharCode(...new Uint8Array(hashBuffer)))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=/g, "");
+  return encodeBase64(hashBuffer);
 }
 
 /**

@@ -4,7 +4,7 @@
 
 import {
   generateMasterKey,
-  importMasterKey,
+  exportMasterKey,
   hashData,
   encryptSensitiveMeta,
 } from "./crypto.js";
@@ -149,7 +149,6 @@ export class FileUploader {
     baseIv,
     fileId,
     uploadToken,
-    speedTracker,
     onProgress,
   ) {
     // 动态获取加密器类（支持 Worker 或主线程）
@@ -184,8 +183,7 @@ export class FileUploader {
           const delta = loaded - chunkUploaded;
           chunkUploaded = loaded;
           this.uploadedBytes += delta;
-          speedTracker.record(delta);
-          onProgress();
+          onProgress(delta, this.uploadedBytes);
         });
 
         await this._notifyChunkComplete(
@@ -199,7 +197,7 @@ export class FileUploader {
         return chunkFileId;
       } catch (err) {
         this.uploadedBytes = bytesBeforeAttempt;
-        onProgress();
+        onProgress(0, 0);
         throw err;
       }
     });
@@ -234,13 +232,13 @@ export class FileUploader {
   /**
    * 执行上传
    */
-  async upload(speedTracker, onProgress, onStatusUpdate) {
+  async upload(onProgress, onStatusUpdate) {
     // 1. 初始化
     const { fileId, uploadToken } = await this._initUpload();
 
     // 2. 准备加密
-    const masterKeyStr = await generateMasterKey();
-    const masterKey = await importMasterKey(masterKeyStr);
+    const masterKey = await generateMasterKey();
+    const masterKeyStr = await exportMasterKey(masterKey)
     const baseIv = window.crypto.getRandomValues(new Uint8Array(12));
     const keyHash = await hashData(masterKeyStr);
 
@@ -266,7 +264,6 @@ export class FileUploader {
         baseIv,
         fileId,
         uploadToken,
-        speedTracker,
         onProgress,
       );
 
