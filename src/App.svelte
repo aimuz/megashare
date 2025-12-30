@@ -23,6 +23,9 @@
         maxFileSize: 20 * 1024 * 1024 * 1024, // 20GB (default)
     });
 
+    // Fixed encryption block size (1MB)
+    const ENCRYPTION_BLOCK_SIZE = 1024 * 1024;
+
     // Retry helper with exponential backoff
     const MAX_RETRIES = 3;
     const RETRY_DELAY_MS = 1000;
@@ -350,19 +353,42 @@
     };
 
     /**
-     * 加密分片数据
+     * 使用子块加密分片数据
+     * 将大块数据拆分为固定大小的加密块，独立加密后拼接
      */
-    const encryptChunk = async (chunkBuffer, masterKey, baseIv, chunkIndex) => {
-        const iv = getChunkIV(baseIv, chunkIndex);
-        return window.crypto.subtle.encrypt(
-            { name: "AES-GCM", iv },
-            masterKey,
-            chunkBuffer,
-        );
+    const encryptChunkWithBlocks = async (
+        chunkBuffer,
+        masterKey,
+        baseIv,
+        chunkIndex,
+        blockSize,
+    ) => {
+        const blocksPerChunk = Math.ceil(serverConfig.chunkSize / blockSize);
+        const globalBlockOffset = chunkIndex * blocksPerChunk;
+        const numBlocks = Math.ceil(chunkBuffer.byteLength / blockSize);
+        const encryptedBlocks = [];
+
+        for (let i = 0; i < numBlocks; i++) {
+            const start = i * blockSize;
+            const end = Math.min(start + blockSize, chunkBuffer.byteLength);
+            const blockData = chunkBuffer.slice(start, end);
+            const globalIndex = globalBlockOffset + i;
+            const iv = getChunkIV(baseIv, globalIndex);
+            const encrypted = await window.crypto.subtle.encrypt(
+                { name: "AES-GCM", iv },
+                masterKey,
+                blockData,
+            );
+            encryptedBlocks.push(new Uint8Array(encrypted));
+        }
+
+        // 合并所有加密块
+        const blob = new Blob(encryptedBlocks);
+        return blob.arrayBuffer();
     };
 
     /**
-     * 解密 chunk 数据
+     * 解密 chunk 数据（单块，用于向后兼容）
      */
     const decryptChunk = async (
         encryptedData,
@@ -582,11 +608,12 @@
                         Math.min(start + serverConfig.chunkSize, file.size),
                     )
                     .arrayBuffer();
-                const encryptedChunk = await encryptChunk(
+                const encryptedChunk = await encryptChunkWithBlocks(
                     chunkBuffer,
                     masterKey,
                     baseIv,
                     i,
+                    ENCRYPTION_BLOCK_SIZE,
                 );
                 const contentHash = await computeHash(encryptedChunk);
 
@@ -660,6 +687,8 @@
                 createdAt: Date.now(),
                 totalChunks,
                 encryptedMeta,
+                encryptionBlockSize: ENCRYPTION_BLOCK_SIZE,
+                chunkSize: serverConfig.chunkSize,
             };
 
             await finalizeUpload(
@@ -689,7 +718,7 @@
     };
 
     /**
-     * 从 URL 读取数据流并返回完整数据
+     * 从 URL 读取数据流并返回完整数据（用于旧文件兼容）
      * 浏览器会自动跟随 302 重定向
      */
     const fetchWithProgress = async (url, onProgress) => {
@@ -720,6 +749,87 @@
         }
 
         return buffer;
+    };
+
+    /**
+     * 流式下载并解密：边下载边解密边写入
+     * 极大减少内存占用，仅需 ~1MB 缓冲区
+     */
+    const streamFetchAndDecrypt = async (
+        url,
+        masterKey,
+        baseIv,
+        chunkIndex,
+        encryptionBlockSize,
+        blockSize,
+        onDecrypted,
+        onProgress,
+    ) => {
+        const res = await fetch(url);
+        if (!res.ok) {
+            throw new Error(`下载失败: ${res.status}`);
+        }
+
+        const reader = res.body.getReader();
+        const encryptedBlockSizeWithTag = encryptionBlockSize + 16;
+        const blocksPerChunk = Math.ceil(blockSize / encryptionBlockSize);
+        const globalBlockOffset = chunkIndex * blocksPerChunk;
+
+        let pendingBuffer = new Uint8Array(0);
+        let blockIndex = 0;
+        let totalReceived = 0;
+
+        while (true) {
+            const { done, value } = await reader.read();
+
+            if (value) {
+                totalReceived += value.byteLength;
+                onProgress(value.byteLength, totalReceived);
+
+                // 合并待处理缓冲区
+                const newBuffer = new Uint8Array(
+                    pendingBuffer.length + value.length,
+                );
+                newBuffer.set(pendingBuffer);
+                newBuffer.set(value, pendingBuffer.length);
+                pendingBuffer = newBuffer;
+            }
+
+            // 处理完整的加密块
+            while (
+                pendingBuffer.length >= encryptedBlockSizeWithTag ||
+                (done && pendingBuffer.length > 0)
+            ) {
+                const isLastBlock =
+                    done && pendingBuffer.length < encryptedBlockSizeWithTag;
+                const blockEnd = isLastBlock
+                    ? pendingBuffer.length
+                    : encryptedBlockSizeWithTag;
+                const blockData = pendingBuffer.slice(0, blockEnd);
+                pendingBuffer = pendingBuffer.slice(blockEnd);
+
+                const globalIndex = globalBlockOffset + blockIndex;
+                const iv = getChunkIV(baseIv, globalIndex);
+
+                try {
+                    const decrypted = await window.crypto.subtle.decrypt(
+                        { name: "AES-GCM", iv },
+                        masterKey,
+                        blockData,
+                    );
+                    await onDecrypted(new Uint8Array(decrypted));
+                } catch {
+                    throw new Error(
+                        `分块 ${chunkIndex} 子块 ${blockIndex} 解密失败。数据可能已被篡改或密钥错误。`,
+                    );
+                }
+                blockIndex++;
+
+                if (isLastBlock) break;
+            }
+
+            if (done) break;
+        }
     };
 
     const handleDownload = async () => {
@@ -785,26 +895,60 @@
                 for (let i = 0; i < metaData.totalChunks; i++) {
                     const chunkBaseBytes = cumulativeBytes;
 
-                    const decryptedBuffer = await withRetry(async () => {
-                        downloadedBytes = chunkBaseBytes; // 重试时重置进度
+                    // 兼容，曾经命名为 blockSize，现在命名为 chunkSize
+                    const chunkSize = metaData.chunkSize || metaData.blockSize;
+                    // 根据 metadata 判断使用新旧解密方式
+                    if (metaData.encryptionBlockSize && chunkSize) {
+                        let chunkWritePosition = chunkBaseBytes;
+                        // 新加密：真正的流式处理，边下载边解密边写入
+                        await withRetry(async () => {
+                            downloadedBytes = chunkBaseBytes;
+                            await writable.seek(chunkWritePosition);
+                            await streamFetchAndDecrypt(
+                                getChunkURL(i),
+                                masterKey,
+                                baseIv,
+                                i,
+                                metaData.encryptionBlockSize,
+                                chunkSize,
+                                async (decrypted) => {
+                                    await writable.write(decrypted);
+                                    cumulativeBytes += decrypted.byteLength;
+                                    chunkWritePosition += decrypted.byteLength;
+                                },
+                                (bytes, total) =>
+                                    updateProgress(
+                                        bytes,
+                                        chunkBaseBytes + total,
+                                    ),
+                            );
+                        });
+                    } else {
+                        // 向后兼容：旧文件使用整块解密
+                        const decryptedBuffer = await withRetry(async () => {
+                            downloadedBytes = chunkBaseBytes;
 
-                        const url = getChunkURL(i);
-                        const encryptedData = await fetchWithProgress(
-                            url,
-                            (bytes, total) =>
-                                updateProgress(bytes, chunkBaseBytes + total),
-                        );
+                            const url = getChunkURL(i);
+                            const encryptedData = await fetchWithProgress(
+                                url,
+                                (bytes, total) =>
+                                    updateProgress(
+                                        bytes,
+                                        chunkBaseBytes + total,
+                                    ),
+                            );
 
-                        return await decryptChunk(
-                            encryptedData,
-                            masterKey,
-                            baseIv,
-                            i,
-                        );
-                    });
+                            return await decryptChunk(
+                                encryptedData,
+                                masterKey,
+                                baseIv,
+                                i,
+                            );
+                        });
 
-                    await writable.write(new Uint8Array(decryptedBuffer));
-                    cumulativeBytes += decryptedBuffer.byteLength;
+                        await writable.write(new Uint8Array(decryptedBuffer));
+                        cumulativeBytes += decryptedBuffer.byteLength;
+                    }
                 }
 
                 await writable.close();
