@@ -299,26 +299,3 @@ export class StreamDecryptor {
     }
   }
 }
-
-/**
- * 向后兼容：解密整块数据
- */
-export async function decryptChunk(
-  encryptedData,
-  masterKey,
-  baseIv,
-  chunkIndex,
-) {
-  const iv = getChunkIV(baseIv, chunkIndex);
-  try {
-    return await window.crypto.subtle.decrypt(
-      { name: "AES-GCM", iv },
-      masterKey,
-      encryptedData,
-    );
-  } catch {
-    throw new Error(
-      `分块 ${chunkIndex} 解密失败。数据可能已被篡改或密钥错误。`,
-    );
-  }
-}

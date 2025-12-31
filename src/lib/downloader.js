@@ -2,7 +2,7 @@
  * 文件下载模块
  */
 
-import { importMasterKey, decryptChunk, decodeBase64 } from "./crypto.js";
+import { importMasterKey, decodeBase64 } from "./crypto.js";
 import { withRetry } from "./utils.js";
 import { getDecryptorClass } from "./crypto-config.js";
 
@@ -22,39 +22,6 @@ export class FileDownloader {
    */
   _getChunkURL(chunkIndex) {
     return `/api/file/${this.fileId}/chunk/${chunkIndex}`;
-  }
-
-  /**
-   * 旧方式：下载并返回完整数据
-   */
-  async _fetchChunkData(url, onProgress) {
-    const res = await fetch(url);
-    if (!res.ok) {
-      throw new Error(`下载失败: ${res.status}`);
-    }
-
-    const reader = res.body.getReader();
-    const chunks = [];
-    let received = 0;
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      chunks.push(value);
-      received += value.byteLength;
-      onProgress(value.byteLength, received);
-    }
-
-    // 合并所有块
-    const buffer = new Uint8Array(received);
-    let offset = 0;
-    for (const chunk of chunks) {
-      buffer.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-
-    return buffer;
   }
 
   /**
@@ -98,30 +65,6 @@ export class FileDownloader {
   }
 
   /**
-   * 旧方式：下载并解密（向后兼容）
-   */
-  async _downloadChunkLegacy(
-    chunkIndex,
-    writable,
-    masterKey,
-    baseIv,
-    chunkBaseBytes,
-    onProgress,
-  ) {
-    const decryptedBuffer = await withRetry(async () => {
-      const url = this._getChunkURL(chunkIndex);
-      const encryptedData = await this._fetchChunkData(url, (bytes, total) =>
-        onProgress(bytes, chunkBaseBytes + total),
-      );
-
-      return await decryptChunk(encryptedData, masterKey, baseIv, chunkIndex);
-    });
-
-    await writable.write(decryptedBuffer);
-    return chunkBaseBytes + decryptedBuffer.byteLength;
-  }
-
-  /**
    * 执行下载
    */
   async download(masterKeyStr, writable, onProgress) {
@@ -129,35 +72,20 @@ export class FileDownloader {
     const baseIv = new Uint8Array(this.metaData.iv);
 
     let cumulativeBytes = 0;
-    const useNewMethod = !!this.metaData.encryptionBlockSize;
 
     for (let i = 0; i < this.metaData.totalChunks; i++) {
       const chunkBaseBytes = cumulativeBytes;
-      if (useNewMethod) {
-        cumulativeBytes = await this._downloadChunk(
-          i,
-          writable,
-          masterKey,
-          baseIv,
-          chunkBaseBytes,
-          (bytes, total) => {
-            this.downloadedBytes = total;
-            onProgress(bytes, total);
-          },
-        );
-      } else {
-        cumulativeBytes = await this._downloadChunkLegacy(
-          i,
-          writable,
-          masterKey,
-          baseIv,
-          chunkBaseBytes,
-          (bytes, total) => {
-            this.downloadedBytes = total;
-            onProgress(bytes, total);
-          },
-        );
-      }
+      cumulativeBytes = await this._downloadChunk(
+        i,
+        writable,
+        masterKey,
+        baseIv,
+        chunkBaseBytes,
+        (bytes, total) => {
+          this.downloadedBytes = total;
+          onProgress(bytes, total);
+        },
+      );
     }
   }
 }
