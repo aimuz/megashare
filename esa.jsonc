@@ -5,11 +5,11 @@
   "installCommand": "npm install",
   "buildCommand": "npm run build",
   "assets": {
-    "directory": "./dist",
+    "directory": "./dist"
   },
   "codeVersions": [],
   "dev": {
     "port": 18080,
-    "localUpstream": "",
-  },
+    "localUpstream": ""
+  }
 }

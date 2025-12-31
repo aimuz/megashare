@@ -6,6 +6,12 @@
       "options": {
         "parser": "svelte"
       }
+    },
+    {
+      "files": "esa.jsonc",
+      "options": {
+        "trailingComma": "none"
+      }
     }
   ],
   "tabWidth": 2,
