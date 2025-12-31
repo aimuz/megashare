@@ -4,7 +4,8 @@
  */
 
 import { getCryptoWorker } from "./worker-bridge.js";
-import { appendBuffer } from "./utils.js";
+import { BufferAccumulator, bytesToHex } from "./utils.js";
+import { sha256 } from "@noble/hashes/sha2.js";
 
 export class WorkerStreamEncryptor {
   constructor(masterKey, baseIv, chunkIndex, chunkSize, blockSize) {
@@ -41,13 +42,17 @@ export class WorkerStreamEncryptor {
     // 用于累积加密块（边加密边累积，用于创建 Blob）
     const encryptedBlocks = [];
 
+    // 流式哈希计算器
+    const hasher = sha256.create();
+
     try {
       // 初始化密钥（只需一次）
       await this._initMasterKey();
 
-      let pendingBuffer = new Uint8Array(0);
+      const buffer = new BufferAccumulator();
       let blockIndex = 0;
       let totalRead = 0;
+      let totalEncryptedSize = 0;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -55,19 +60,15 @@ export class WorkerStreamEncryptor {
         if (value) {
           totalRead += value.byteLength;
           onProgress?.(value.byteLength, totalRead);
-          pendingBuffer = appendBuffer(pendingBuffer, value);
+          buffer.append(value);
         }
 
         // 处理完整的加密块
-        while (
-          pendingBuffer.length >= this.blockSize ||
-          (done && pendingBuffer.length > 0)
-        ) {
-          const isLastBlock = done && pendingBuffer.length < this.blockSize;
-          const blockEnd = isLastBlock ? pendingBuffer.length : this.blockSize;
-          // Use subarray to avoid copying
-          const blockData = pendingBuffer.subarray(0, blockEnd);
-          pendingBuffer = pendingBuffer.subarray(blockEnd);
+        while (buffer.length >= this.blockSize || (done && buffer.length > 0)) {
+          const isLastBlock = done && buffer.length < this.blockSize;
+          const blockData = isLastBlock
+            ? buffer.consumeAll()
+            : buffer.consume(this.blockSize);
 
           // 加密（使用 keyId）
           const encryptedBlock = await this.worker.encryptBlock(
@@ -77,6 +78,10 @@ export class WorkerStreamEncryptor {
             this.globalBlockOffset,
             blockIndex,
           );
+
+          // 增量计算哈希
+          hasher.update(new Uint8Array(encryptedBlock));
+          totalEncryptedSize += encryptedBlock.byteLength;
 
           encryptedBlocks.push(encryptedBlock);
           onEncrypted?.(encryptedBlock);
@@ -88,13 +93,17 @@ export class WorkerStreamEncryptor {
         if (done) break;
       }
 
-      // 在 Worker 中计算哈希（避免阻塞主线程）
+      // 完成哈希计算
+      const contentHash = bytesToHex(hasher.digest());
+
       const encryptedBlob = new Blob(encryptedBlocks);
-      const encryptedData = await encryptedBlob.arrayBuffer();
-      const contentHash = await this.worker.computeHash(encryptedData);
+
+      // 释放 encryptedBlocks 引用，允许 GC 回收
+      encryptedBlocks.length = 0;
 
       return {
-        data: encryptedData,
+        blob: encryptedBlob,
+        size: totalEncryptedSize,
         hash: contentHash,
       };
     } finally {
@@ -149,7 +158,7 @@ export class WorkerStreamDecryptor {
       // 初始化密钥（只需一次）
       await this._initMasterKey();
 
-      let pendingBuffer = new Uint8Array(0);
+      const buffer = new BufferAccumulator();
       let blockIndex = 0;
       let totalReceived = 0;
 
@@ -159,22 +168,19 @@ export class WorkerStreamDecryptor {
         if (value) {
           totalReceived += value.byteLength;
           onProgress?.(value.byteLength, totalReceived);
-          pendingBuffer = appendBuffer(pendingBuffer, value);
+          buffer.append(value);
         }
 
         // 处理完整的加密块
         while (
-          pendingBuffer.length >= this.encryptedBlockSizeWithTag ||
-          (done && pendingBuffer.length > 0)
+          buffer.length >= this.encryptedBlockSizeWithTag ||
+          (done && buffer.length > 0)
         ) {
           const isLastBlock =
-            done && pendingBuffer.length < this.encryptedBlockSizeWithTag;
-          const blockEnd = isLastBlock
-            ? pendingBuffer.length
-            : this.encryptedBlockSizeWithTag;
-          // Use subarray to avoid copying
-          const blockData = pendingBuffer.subarray(0, blockEnd);
-          pendingBuffer = pendingBuffer.subarray(blockEnd);
+            done && buffer.length < this.encryptedBlockSizeWithTag;
+          const blockData = isLastBlock
+            ? buffer.consumeAll()
+            : buffer.consume(this.encryptedBlockSizeWithTag);
 
           // 解密（使用 keyId）
           const decrypted = await this.worker.decryptBlock(

@@ -101,7 +101,8 @@ export class FileUploader {
 
       if (uploadSpec.bodyType === "form-data") {
         const form = new FormData();
-        form.append(uploadSpec.fieldName || "file", new Blob([data]));
+        // data 已经是 Blob，直接使用
+        form.append(uploadSpec.fieldName || "file", data);
         xhr.send(form);
       } else {
         xhr.send(data);
@@ -166,7 +167,11 @@ export class FileUploader {
       ENCRYPTION_BLOCK_SIZE,
     );
 
-    const { data: encryptedData, hash: contentHash } = await encryptor.processStream(fileSlice);
+    const {
+      blob: encryptedBlob,
+      size: encryptedSize,
+      hash: contentHash,
+    } = await encryptor.processStream(fileSlice);
 
     // 上传
     const chunkFileId = await withRetry(async () => {
@@ -177,12 +182,12 @@ export class FileUploader {
         const { uploadSpec, chunkFileId, uploadId } = await this._getUploadSpec(
           fileId,
           chunkIndex,
-          encryptedData.byteLength,
+          encryptedSize,
           contentHash,
           uploadToken,
         );
 
-        await this._uploadWithXHR(uploadSpec, encryptedData, (loaded) => {
+        await this._uploadWithXHR(uploadSpec, encryptedBlob, (loaded) => {
           const delta = loaded - chunkUploaded;
           chunkUploaded = loaded;
           this.uploadedBytes += delta;
@@ -241,7 +246,7 @@ export class FileUploader {
 
     // 2. 准备加密
     const masterKey = await generateMasterKey();
-    const masterKeyStr = await exportMasterKey(masterKey)
+    const masterKeyStr = await exportMasterKey(masterKey);
     const baseIv = window.crypto.getRandomValues(new Uint8Array(12));
     const keyHash = await hashData(masterKeyStr);
 
