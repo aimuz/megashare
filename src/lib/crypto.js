@@ -2,9 +2,9 @@
  * 加密相关工具函数
  */
 
-import { BufferAccumulator } from "./utils";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
+import { BufferAccumulator } from "./utils.js";
 
 /**
  * 生成主密钥
