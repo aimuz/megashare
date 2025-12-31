@@ -3,9 +3,10 @@
  * 在独立线程处理加密，避免阻塞 UI
  */
 
-import { getCryptoWorker } from "./worker-bridge.js";
-import { BufferAccumulator, bytesToHex } from "./utils.js";
 import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
+import { getCryptoWorker } from "./worker-bridge.js";
+import { BufferAccumulator } from "./utils.js";
 
 export class WorkerStreamEncryptor {
   constructor(masterKey, baseIv, chunkIndex, chunkSize, blockSize) {
