@@ -29,7 +29,7 @@ let loaded = false;
  * @param {() => Promise<Object<string, any>>} loader - 加载配置的异步函数
  */
 export function registerProvider(name, loader) {
-    providers.push({ name, loader });
+  providers.push({ name, loader });
 }
 
 /**
@@ -37,22 +37,22 @@ export function registerProvider(name, loader) {
  * 应在应用启动时调用一次
  */
 async function load() {
-    if (loaded) return;
+  if (loaded) return;
 
-    const promises = providers.map(({ name, loader }) =>
-        loader().catch(e => {
-            console.error(`[Config] Failed to load from provider "${name}":`, e);
-            return null; // 返回 null 以防止 Promise.all 失败
-        })
-    );
+  const promises = providers.map(({ name, loader }) =>
+    loader().catch((e) => {
+      console.error(`[Config] Failed to load from provider "${name}":`, e);
+      return null; // 返回 null 以防止 Promise.all 失败
+    }),
+  );
 
-    const results = await Promise.all(promises);
-    for (const data of results) {
-        if (data && typeof data === 'object') {
-            providerConfig = { ...providerConfig, ...data };
-        }
+  const results = await Promise.all(promises);
+  for (const data of results) {
+    if (data && typeof data === "object") {
+      providerConfig = { ...providerConfig, ...data };
     }
-    loaded = true;
+  }
+  loaded = true;
 }
 
 /**
@@ -61,11 +61,11 @@ async function load() {
  * @returns {any}
  */
 function get(key) {
-    // 优先级：overrides > providerConfig > defaults
-    if (key in overrides) return overrides[key];
-    if (key in providerConfig) return providerConfig[key];
-    if (key in defaults) return defaults[key];
-    return undefined;
+  // 优先级：overrides > providerConfig > defaults
+  if (key in overrides) return overrides[key];
+  if (key in providerConfig) return providerConfig[key];
+  if (key in defaults) return defaults[key];
+  return undefined;
 }
 
 /**
@@ -75,9 +75,9 @@ function get(key) {
  * @returns {string}
  */
 function getString(key, defaultValue = "") {
-    const val = get(key);
-    if (val === undefined || val === null) return defaultValue;
-    return String(val);
+  const val = get(key);
+  if (val === undefined || val === null) return defaultValue;
+  return String(val);
 }
 
 /**
@@ -87,10 +87,10 @@ function getString(key, defaultValue = "") {
  * @returns {number}
  */
 function getInt(key, defaultValue = 0) {
-    const val = get(key);
-    if (val === undefined || val === null) return defaultValue;
-    const num = parseInt(val, 10);
-    return isNaN(num) ? defaultValue : num;
+  const val = get(key);
+  if (val === undefined || val === null) return defaultValue;
+  const num = parseInt(val, 10);
+  return isNaN(num) ? defaultValue : num;
 }
 
 /**
@@ -100,17 +100,17 @@ function getInt(key, defaultValue = 0) {
  * @returns {boolean}
  */
 function getBool(key, defaultValue = false) {
-    const val = get(key);
-    if (val === undefined || val === null) return defaultValue;
-    if (typeof val === "boolean") return val;
-    if (typeof val === "string") {
-        return val.toLowerCase() === "true" || val === "1";
-    }
-    if (typeof val === "number") {
-        return val !== 0;
-    }
-    // For other types like objects and arrays, return the default value.
-    return defaultValue;
+  const val = get(key);
+  if (val === undefined || val === null) return defaultValue;
+  if (typeof val === "boolean") return val;
+  if (typeof val === "string") {
+    return val.toLowerCase() === "true" || val === "1";
+  }
+  if (typeof val === "number") {
+    return val !== 0;
+  }
+  // For other types like objects and arrays, return the default value.
+  return defaultValue;
 }
 
 /**
@@ -120,7 +120,7 @@ function getBool(key, defaultValue = false) {
  * @param {any} value
  */
 function set(key, value) {
-    overrides[key] = value;
+  overrides[key] = value;
 }
 
 /**
@@ -129,7 +129,7 @@ function set(key, value) {
  * @param {any} value
  */
 function setDefault(key, value) {
-    defaults[key] = value;
+  defaults[key] = value;
 }
 
 /**
@@ -137,7 +137,7 @@ function setDefault(key, value) {
  * @param {Object<string, any>} obj
  */
 function setDefaults(obj) {
-    Object.assign(defaults, obj);
+  Object.assign(defaults, obj);
 }
 
 /**
@@ -145,28 +145,28 @@ function setDefaults(obj) {
  * @returns {Object<string, any>}
  */
 function getAll() {
-    return { ...defaults, ...providerConfig, ...overrides };
+  return { ...defaults, ...providerConfig, ...overrides };
 }
 
 /**
  * 重置配置（用于测试）
  */
 function reset() {
-    Object.keys(overrides).forEach((k) => delete overrides[k]);
-    providerConfig = {};
-    Object.keys(defaults).forEach((k) => delete defaults[k]);
-    loaded = false;
+  Object.keys(overrides).forEach((k) => delete overrides[k]);
+  providerConfig = {};
+  Object.keys(defaults).forEach((k) => delete defaults[k]);
+  loaded = false;
 }
 
 export default {
-    load,
-    get,
-    getString,
-    getInt,
-    getBool,
-    set,
-    setDefault,
-    setDefaults,
-    getAll,
-    reset,
+  load,
+  get,
+  getString,
+  getInt,
+  getBool,
+  set,
+  setDefault,
+  setDefaults,
+  getAll,
+  reset,
 };

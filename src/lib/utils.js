@@ -6,11 +6,7 @@
 const MAX_RETRIES = 8;
 const RETRY_DELAY_MS = 1000;
 
-export const withRetry = async (
-  fn,
-  retries = MAX_RETRIES,
-  delayMs = RETRY_DELAY_MS,
-) => {
+export const withRetry = async (fn, retries = MAX_RETRIES, delayMs = RETRY_DELAY_MS) => {
   let lastError;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -19,10 +15,7 @@ export const withRetry = async (
       lastError = err;
       if (attempt < retries) {
         const delay = delayMs * Math.pow(2, attempt);
-        console.warn(
-          `Attempt ${attempt + 1} failed, retrying in ${delay}ms...`,
-          err.message,
-        );
+        console.warn(`Attempt ${attempt + 1} failed, retrying in ${delay}ms...`, err.message);
         await new Promise((r) => setTimeout(r, delay));
       }
     }
@@ -33,18 +26,13 @@ export const withRetry = async (
 // Format helpers
 const formatUnit = (value, units) => {
   if (!value || value <= 0) return `0 ${units[0]}`;
-  const i = Math.min(
-    Math.floor(Math.log(value) / Math.log(1024)),
-    units.length - 1,
-  );
+  const i = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
   return `${(value / Math.pow(1024, i)).toFixed(2)} ${units[i]}`;
 };
 
-export const formatSpeed = (bps) =>
-  formatUnit(bps, ["B/s", "KB/s", "MB/s", "GB/s"]);
+export const formatSpeed = (bps) => formatUnit(bps, ["B/s", "KB/s", "MB/s", "GB/s"]);
 
-export const formatBytes = (bytes) =>
-  formatUnit(bytes, ["B", "KB", "MB", "GB", "TB"]);
+export const formatBytes = (bytes) => formatUnit(bytes, ["B", "KB", "MB", "GB", "TB"]);
 
 export const formatETA = (seconds) => {
   if (!seconds || seconds === Infinity || seconds < 0) return "";
@@ -108,8 +96,7 @@ export class SpeedTracker {
       this.smoothedSpeed = rawSpeed;
     } else {
       this.smoothedSpeed =
-        this.smoothingFactor * rawSpeed +
-        (1 - this.smoothingFactor) * this.smoothedSpeed;
+        this.smoothingFactor * rawSpeed + (1 - this.smoothingFactor) * this.smoothedSpeed;
     }
 
     return this.smoothedSpeed;
@@ -156,9 +143,7 @@ export class BufferAccumulator {
    */
   consume(size) {
     if (size > this.totalLength) {
-      throw new Error(
-        `Cannot consume ${size} bytes, only ${this.totalLength} available`,
-      );
+      throw new Error(`Cannot consume ${size} bytes, only ${this.totalLength} available`);
     }
 
     // 快速路径：第一个块足够大

@@ -26,11 +26,7 @@ function getChunkIV(baseIv, index) {
  */
 async function encryptBlock(blockData, masterKey, baseIv, globalIndex) {
   const iv = getChunkIV(baseIv, globalIndex);
-  return await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
-    masterKey,
-    blockData,
-  );
+  return await crypto.subtle.encrypt({ name: "AES-GCM", iv }, masterKey, blockData);
 }
 
 /**
@@ -38,11 +34,7 @@ async function encryptBlock(blockData, masterKey, baseIv, globalIndex) {
  */
 async function decryptBlock(blockData, masterKey, baseIv, globalIndex) {
   const iv = getChunkIV(baseIv, globalIndex);
-  return await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv },
-    masterKey,
-    blockData,
-  );
+  return await crypto.subtle.decrypt({ name: "AES-GCM", iv }, masterKey, blockData);
 }
 
 /**
@@ -58,12 +50,7 @@ async function processEncryptStream(data) {
   }
 
   const globalIndex = globalBlockOffset + blockIndex;
-  const encrypted = await encryptBlock(
-    blockData,
-    masterKey,
-    baseIv,
-    globalIndex,
-  );
+  const encrypted = await encryptBlock(blockData, masterKey, baseIv, globalIndex);
 
   // `result.data` 中的 ArrayBuffer 使用 Transferable Objects 进行零拷贝传输
   return {
@@ -86,13 +73,7 @@ async function processDecryptStream(data) {
   }
 
   const globalIndex = globalBlockOffset + blockIndex;
-  const decrypted = await decryptBlock(
-    blockData,
-    masterKey,
-    baseIv,
-    globalIndex,
-  );
-
+  const decrypted = await decryptBlock(blockData, masterKey, baseIv, globalIndex);
 
   // `result.data` 中的 ArrayBuffer 使用 Transferable Objects 进行零拷贝传输
   return {
@@ -106,11 +87,10 @@ async function processDecryptStream(data) {
  * 生成主密钥
  */
 async function generateMasterKey() {
-  const key = await crypto.subtle.generateKey(
-    { name: "AES-GCM", length: 256 },
-    true,
-    ["encrypt", "decrypt"],
-  );
+  const key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, [
+    "encrypt",
+    "decrypt",
+  ]);
   const exported = await crypto.subtle.exportKey("raw", key);
   return btoa(String.fromCharCode(...new Uint8Array(exported)))
     .replace(/\+/g, "-")
@@ -134,13 +114,9 @@ async function computeHash(data) {
 async function encryptMetadata(data) {
   const { masterKeyRaw, baseIv, sensitiveMeta } = data;
 
-  const masterKey = await crypto.subtle.importKey(
-    "raw",
-    masterKeyRaw,
-    "AES-GCM",
-    true,
-    ["encrypt"],
-  );
+  const masterKey = await crypto.subtle.importKey("raw", masterKeyRaw, "AES-GCM", true, [
+    "encrypt",
+  ]);
 
   const jsonStr = JSON.stringify(sensitiveMeta);
   const encoded = new TextEncoder().encode(jsonStr);
@@ -165,13 +141,10 @@ self.addEventListener("message", async (event) => {
       case "set-master-key":
         // 缓存主密钥（支持多个并发会话）
         const { keyId, masterKeyRaw } = data;
-        const masterKey = await crypto.subtle.importKey(
-          "raw",
-          masterKeyRaw,
-          "AES-GCM",
-          true,
-          ["encrypt", "decrypt"],
-        );
+        const masterKey = await crypto.subtle.importKey("raw", masterKeyRaw, "AES-GCM", true, [
+          "encrypt",
+          "decrypt",
+        ]);
         keyCache.set(keyId, masterKey);
         result = { success: true };
         break;
@@ -207,7 +180,12 @@ self.addEventListener("message", async (event) => {
     }
 
     const transferables = [];
-    if (result && typeof result === "object" && "data" in result && result.data instanceof ArrayBuffer) {
+    if (
+      result &&
+      typeof result === "object" &&
+      "data" in result &&
+      result.data instanceof ArrayBuffer
+    ) {
       transferables.push(result.data);
     }
     self.postMessage(

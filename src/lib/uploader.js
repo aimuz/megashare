@@ -2,12 +2,7 @@
  * 文件上传模块
  */
 
-import {
-  generateMasterKey,
-  exportMasterKey,
-  hashData,
-  encryptSensitiveMeta,
-} from "./crypto.js";
+import { generateMasterKey, exportMasterKey, hashData, encryptSensitiveMeta } from "./crypto.js";
 import { withRetry } from "./utils.js";
 import { getEncryptorClass, ENCRYPTION_BLOCK_SIZE } from "./crypto-config.js";
 
@@ -42,13 +37,7 @@ export class FileUploader {
   /**
    * 获取上传规格
    */
-  async _getUploadSpec(
-    fileId,
-    chunkIndex,
-    chunkSize,
-    contentHash,
-    uploadToken,
-  ) {
+  async _getUploadSpec(fileId, chunkIndex, chunkSize, contentHash, uploadToken) {
     const res = await fetch("/api/upload/chunk", {
       method: "POST",
       headers: {
@@ -64,9 +53,7 @@ export class FileUploader {
     });
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
-      throw new Error(
-        `Get upload spec failed: ${errData.error || res.statusText}`,
-      );
+      throw new Error(`Get upload spec failed: ${errData.error || res.statusText}`);
     }
     return res.json();
   }
@@ -113,14 +100,7 @@ export class FileUploader {
   /**
    * 通知服务端分片上传完成
    */
-  async _notifyChunkComplete(
-    fileId,
-    chunkIndex,
-    chunkFileId,
-    uploadId,
-    contentHash,
-    uploadToken,
-  ) {
+  async _notifyChunkComplete(fileId, chunkIndex, chunkFileId, uploadId, contentHash, uploadToken) {
     const res = await fetch("/api/upload/chunk", {
       method: "PUT",
       headers: {
@@ -146,15 +126,7 @@ export class FileUploader {
   /**
    * 上传单个分块
    */
-  async _uploadChunk(
-    fileSlice,
-    chunkIndex,
-    masterKey,
-    baseIv,
-    fileId,
-    uploadToken,
-    onProgress,
-  ) {
+  async _uploadChunk(fileSlice, chunkIndex, masterKey, baseIv, fileId, uploadToken, onProgress) {
     // 动态获取加密器类（支持 Worker 或主线程）
     const EncryptorClass = await getEncryptorClass();
 
@@ -231,9 +203,7 @@ export class FileUploader {
     });
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
-      throw new Error(
-        `Upload finalization failed: ${errData.error || res.statusText}`,
-      );
+      throw new Error(`Upload finalization failed: ${errData.error || res.statusText}`);
     }
   }
 
@@ -285,11 +255,7 @@ export class FileUploader {
       name: this.file.name,
       type: this.file.type || "application/octet-stream",
     };
-    const encryptedMeta = await encryptSensitiveMeta(
-      masterKey,
-      baseIv,
-      sensitiveMeta,
-    );
+    const encryptedMeta = await encryptSensitiveMeta(masterKey, baseIv, sensitiveMeta);
 
     const fileMeta = {
       size: this.file.size,

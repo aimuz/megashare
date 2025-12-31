@@ -71,7 +71,7 @@ let cachedBackend = null;
  * @param {() => Promise<StorageBackend>} factory - 创建后端实例的工厂函数
  */
 export function registerBackend(name, factory) {
-    backends[name] = factory;
+  backends[name] = factory;
 }
 
 /**
@@ -81,30 +81,30 @@ export function registerBackend(name, factory) {
  * @returns {Promise<StorageBackend>}
  */
 export async function createStorageBackend() {
-    if (cachedBackend) {
-        return cachedBackend;
-    }
-
-    const availableBackends = Object.keys(backends);
-    if (availableBackends.length == 0) {
-        throw new Error("No storage backend registered");
-    }
-
-    const backendType = config.getString("STORAGE_BACKEND", availableBackends[0]);
-    console.debug(`Using storage backend: ${backendType}`);
-    const factory = backends[backendType];
-    if (!factory) {
-        const available = Object.keys(backends).join(", ") || "none";
-        throw new Error(`Unknown storage backend: ${backendType}. Available: ${available}`);
-    }
-
-    cachedBackend = await factory();
+  if (cachedBackend) {
     return cachedBackend;
+  }
+
+  const availableBackends = Object.keys(backends);
+  if (availableBackends.length == 0) {
+    throw new Error("No storage backend registered");
+  }
+
+  const backendType = config.getString("STORAGE_BACKEND", availableBackends[0]);
+  console.debug(`Using storage backend: ${backendType}`);
+  const factory = backends[backendType];
+  if (!factory) {
+    const available = Object.keys(backends).join(", ") || "none";
+    throw new Error(`Unknown storage backend: ${backendType}. Available: ${available}`);
+  }
+
+  cachedBackend = await factory();
+  return cachedBackend;
 }
 
 /**
  * 清除缓存的后端实例（用于测试或配置变更）
  */
 export function clearBackendCache() {
-    cachedBackend = null;
+  cachedBackend = null;
 }

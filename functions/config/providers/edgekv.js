@@ -13,14 +13,14 @@ const KEY = "env";
  * @returns {Promise<Object<string, any>>}
  */
 async function loadFromEdgeKV() {
-    const kv = new EdgeKV({ namespace: NAMESPACE });
-    const data = await kv.get(KEY, { type: "json" });
-    return data || {};
+  const kv = new EdgeKV({ namespace: NAMESPACE });
+  const data = await kv.get(KEY, { type: "json" });
+  return data || {};
 }
 
 // 检测 EdgeKV 是否可用并自动注册
 if (typeof EdgeKV !== "undefined") {
-    registerProvider("edgekv", loadFromEdgeKV);
+  registerProvider("edgekv", loadFromEdgeKV);
 }
 
 export { loadFromEdgeKV };
