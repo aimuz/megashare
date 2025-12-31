@@ -36,6 +36,7 @@
 
   let view = $state("home");
   let file = $state(null);
+  let isDragging = $state(false);
   let progress = $state(0);
   let statusInfo = $state({ action: "", size: "", speed: "", eta: "" });
   let shareLink = $state("");
@@ -246,6 +247,24 @@
     }
   }
 
+  function handleDragOver(e) {
+    e.preventDefault();
+    isDragging = true;
+  }
+
+  function handleDragLeave(e) {
+    e.preventDefault();
+    isDragging = false;
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    isDragging = false;
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      file = e.dataTransfer.files[0];
+    }
+  }
+
   function copyLink() {
     navigator.clipboard.writeText(shareLink);
     copied = true;
@@ -312,17 +331,30 @@
           <input type="file" id="file-up" class="hidden" onchange={handleFileChange} />
           <label
             for="file-up"
-            class="block border-2 border-dashed border-white/10 rounded-2xl sm:rounded-[2.5rem] p-6 sm:p-12 md:p-20 text-center transition-all cursor-pointer hover:border-red-600/50 hover:bg-white/2"
+            class="block border-2 border-dashed rounded-2xl sm:rounded-[2.5rem] p-6 sm:p-12 md:p-20 text-center transition-all cursor-pointer {isDragging
+              ? 'border-red-600 bg-red-600/5'
+              : 'border-white/10 hover:border-red-600/50 hover:bg-white/2'}"
+            ondragover={handleDragOver}
+            ondragleave={handleDragLeave}
+            ondrop={handleDrop}
           >
             {#if !file}
               <div class="space-y-4 sm:space-y-6">
                 <div
-                  class="w-16 h-16 sm:w-20 sm:h-20 bg-white/5 rounded-2xl sm:rounded-3xl flex items-center justify-center mx-auto"
+                  class="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl sm:rounded-3xl flex items-center justify-center mx-auto {isDragging
+                    ? 'bg-red-600/20'
+                    : 'bg-white/5'}"
                 >
-                  <Upload class="w-8 h-8 sm:w-10 sm:h-10 text-slate-400 group-hover:text-red-600" />
+                  <Upload
+                    class="w-8 h-8 sm:w-10 sm:h-10 {isDragging
+                      ? 'text-red-600'
+                      : 'text-slate-400 group-hover:text-red-600'}"
+                  />
                 </div>
                 <div class="space-y-1 sm:space-y-2">
-                  <p class="text-xl sm:text-2xl font-bold text-white">开始安全上传</p>
+                  <p class="text-xl sm:text-2xl font-bold text-white">
+                    {isDragging ? "松开以上传文件" : "开始安全上传"}
+                  </p>
                   <p class="text-sm sm:text-base text-slate-500">
                     点击或拖拽文件至此 <span class="hidden sm:inline">(最大 20GB)</span>
                   </p>
