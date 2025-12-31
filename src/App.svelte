@@ -15,162 +15,69 @@
     } from "lucide-svelte";
     import { showSaveFilePicker } from "native-file-system-adapter";
     import {
-        withRetry,
         formatSpeed,
         formatBytes,
         formatETA,
         formatTimeRemaining,
         SpeedTracker,
     } from "./lib/utils.js";
+    import { decryptSensitiveMeta, hashData } from "./lib/crypto.js";
+    import { FileUploader } from "./lib/uploader.js";
+    import { FileDownloader } from "./lib/downloader.js";
+    import { destroyCryptoWorker } from "./lib/worker-bridge.js";
 
-    // --- Server Configuration (single source of truth) ---
+    // ===== State =====
     let serverConfig = $state({
         supportsDirectUrl: true,
         supportsDirectUpload: true,
-        chunkSize: 128 * 1024 * 1024, // 128MB (default)
-        maxFileSize: 20 * 1024 * 1024 * 1024, // 20GB (default)
+        chunkSize: 128 * 1024 * 1024,
+        maxFileSize: 20 * 1024 * 1024 * 1024,
     });
 
-    // Fixed encryption block size (1MB)
-    const ENCRYPTION_BLOCK_SIZE = 1024 * 1024;
-
-    // Generate a Master Key for the file
-    const generateMasterKey = async () => {
-        const key = await window.crypto.subtle.generateKey(
-            { name: "AES-GCM", length: 256 },
-            true,
-            ["encrypt", "decrypt"],
-        );
-        const exported = await window.crypto.subtle.exportKey("raw", key);
-        return btoa(String.fromCharCode(...new Uint8Array(exported)))
-            .replace(/\+/g, "-")
-            .replace(/\//g, "_")
-            .replace(/=/g, "");
-    };
-
-    // Import the Master Key
-    const importMasterKey = async (base64Key) => {
-        const rawKey = Uint8Array.from(
-            atob(base64Key.replace(/-/g, "+").replace(/_/g, "/")),
-            (c) => c.charCodeAt(0),
-        );
-        return await window.crypto.subtle.importKey(
-            "raw",
-            rawKey,
-            "AES-GCM",
-            true,
-            ["encrypt", "decrypt"],
-        );
-    };
-
-    // Helper to hash strings for verification
-    const hashData = async (dataStr) => {
-        const enc = new TextEncoder();
-        const hashBuffer = await window.crypto.subtle.digest(
-            "SHA-256",
-            enc.encode(dataStr),
-        );
-        return btoa(String.fromCharCode(...new Uint8Array(hashBuffer)))
-            .replace(/\+/g, "-")
-            .replace(/\//g, "_")
-            .replace(/=/g, "");
-    };
-
-    // Helper to derive IV for a specific chunk index
-    const getChunkIV = (baseIv, index) => {
-        const iv = new Uint8Array(baseIv);
-        const view = new DataView(iv.buffer);
-        const lastUint32 = view.getUint32(8, false);
-        view.setUint32(8, lastUint32 + index, false);
-        return iv;
-    };
-
-    // Encrypt sensitive metadata (name, type) with master key
-    const encryptSensitiveMeta = async (masterKey, baseIv, sensitiveMeta) => {
-        const jsonStr = JSON.stringify(sensitiveMeta);
-        const encoded = new TextEncoder().encode(jsonStr);
-        // Use index -1 for metadata IV (different from chunk IVs)
-        const metaIv = getChunkIV(baseIv, 0xffffffff);
-        const encrypted = await window.crypto.subtle.encrypt(
-            { name: "AES-GCM", iv: metaIv },
-            masterKey,
-            encoded,
-        );
-        // Convert to base64 for JSON storage
-        return btoa(String.fromCharCode(...new Uint8Array(encrypted)));
-    };
-
-    // Decrypt sensitive metadata
-    const decryptSensitiveMeta = async (
-        masterKeyStr,
-        baseIv,
-        encryptedMeta,
-    ) => {
-        try {
-            const masterKey = await importMasterKey(masterKeyStr);
-            const ivArray = new Uint8Array(baseIv);
-            const metaIv = getChunkIV(ivArray, 0xffffffff);
-            const encrypted = Uint8Array.from(atob(encryptedMeta), (c) =>
-                c.charCodeAt(0),
-            );
-            const decrypted = await window.crypto.subtle.decrypt(
-                { name: "AES-GCM", iv: metaIv },
-                masterKey,
-                encrypted,
-            );
-            const jsonStr = new TextDecoder().decode(decrypted);
-            return JSON.parse(jsonStr);
-        } catch (e) {
-            console.error("Failed to decrypt metadata:", e);
-            return null;
-        }
-    };
-
-    // State
-    let view = $state("home"); // home, processing, success, download
+    let view = $state("home");
     let file = $state(null);
     let progress = $state(0);
-    // 结构化状态，避免布局跳动
     let statusInfo = $state({ action: "", size: "", speed: "", eta: "" });
     let shareLink = $state("");
     let error = $state("");
     let copied = $state(false);
-
-    // Download state
     let metaData = $state(null);
     let urlParams = $state({ id: "", key: "" });
 
-    // 2. Detect URL params and cleanup old service workers
+    // ===== Initialization =====
     $effect(() => {
-        if (typeof window !== "undefined") {
-            // Cleanup any old service workers (from previous StreamSaver.js)
-            if ("serviceWorker" in navigator) {
-                navigator.serviceWorker
-                    .getRegistrations()
-                    .then((registrations) => {
-                        for (const registration of registrations) {
-                            registration.unregister();
-                        }
-                    });
-            }
+        if (typeof window === "undefined") return;
 
-            const params = new URLSearchParams(window.location.search);
-            const id = params.get("f");
-            const key = window.location.hash.substring(1);
-
-            if (id && key && (urlParams.id !== id || urlParams.key !== key)) {
-                urlParams = { id, key };
-                view = "download";
-                fetchMetadata(id, key);
-            }
-
-            // Fetch server configuration
-            fetchServerConfig();
+        // Cleanup old service workers
+        if ("serviceWorker" in navigator) {
+            navigator.serviceWorker.getRegistrations().then((registrations) => {
+                for (const registration of registrations) {
+                    registration.unregister();
+                }
+            });
         }
+
+        // Parse URL params
+        const params = new URLSearchParams(window.location.search);
+        const id = params.get("f");
+        const key = window.location.hash.substring(1);
+
+        if (id && key && (urlParams.id !== id || urlParams.key !== key)) {
+            urlParams = { id, key };
+            view = "download";
+            fetchMetadata(id, key);
+        }
+
+        // Fetch server config
+        fetchServerConfig();
+
+        return () => {
+            // 在组件销毁时终止 worker
+            destroyCryptoWorker();
+        };
     });
 
-    // Fetch server configuration
-    const fetchServerConfig = async () => {
+    async function fetchServerConfig() {
         try {
             const res = await fetch("/api/config");
             if (res.ok) {
@@ -179,17 +86,16 @@
         } catch (err) {
             console.warn("Failed to fetch server config, using defaults", err);
         }
-    };
+    }
 
-    // Fetch Metadata from API and decrypt sensitive fields
-    const fetchMetadata = async (id, key) => {
+    async function fetchMetadata(id, key) {
         try {
             const res = await fetch(`/api/file/${id}`);
             if (!res.ok) throw new Error("File not found");
             const data = await res.json();
             const rawMeta = data.metadata;
 
-            // Verify key hash first
+            // Verify key hash
             if (key && rawMeta.keyHash) {
                 const inputKeyHash = await hashData(key);
                 if (inputKeyHash !== rawMeta.keyHash) {
@@ -198,7 +104,7 @@
                 }
             }
 
-            // If encrypted metadata exists, decrypt it
+            // Decrypt sensitive metadata
             if (rawMeta.encryptedMeta && key) {
                 const sensitiveMeta = await decryptSensitiveMeta(
                     key,
@@ -218,221 +124,10 @@
         } catch (err) {
             error = "无法获取文件元数据或文件不存在。";
         }
-    };
+    }
 
-    // 3. Encryption and Upload
-
-    /**
-     * 初始化上传会话
-     */
-    const initUpload = async (fileSize) => {
-        const res = await fetch("/api/upload/start", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ fileSize }),
-        });
-        if (!res.ok) {
-            const errData = await res.json().catch(() => ({}));
-            throw new Error(errData.error || "Init failed");
-        }
-        return res.json();
-    };
-
-    /**
-     * 使用子块加密分片数据
-     * 将大块数据拆分为固定大小的加密块，独立加密后拼接
-     */
-    const encryptChunkWithBlocks = async (
-        chunkBuffer,
-        masterKey,
-        baseIv,
-        chunkIndex,
-        blockSize,
-    ) => {
-        const blocksPerChunk = Math.ceil(serverConfig.chunkSize / blockSize);
-        const globalBlockOffset = chunkIndex * blocksPerChunk;
-        const numBlocks = Math.ceil(chunkBuffer.byteLength / blockSize);
-        const encryptedBlocks = [];
-
-        for (let i = 0; i < numBlocks; i++) {
-            const start = i * blockSize;
-            const end = Math.min(start + blockSize, chunkBuffer.byteLength);
-            const blockData = chunkBuffer.slice(start, end);
-            const globalIndex = globalBlockOffset + i;
-            const iv = getChunkIV(baseIv, globalIndex);
-            const encrypted = await window.crypto.subtle.encrypt(
-                { name: "AES-GCM", iv },
-                masterKey,
-                blockData,
-            );
-            encryptedBlocks.push(new Uint8Array(encrypted));
-        }
-
-        // 合并所有加密块
-        const blob = new Blob(encryptedBlocks);
-        return blob.arrayBuffer();
-    };
-
-    /**
-     * 解密 chunk 数据（单块，用于向后兼容）
-     */
-    const decryptChunk = async (
-        encryptedData,
-        masterKey,
-        baseIv,
-        chunkIndex,
-    ) => {
-        const iv = getChunkIV(baseIv, chunkIndex);
-        try {
-            return await window.crypto.subtle.decrypt(
-                { name: "AES-GCM", iv },
-                masterKey,
-                encryptedData,
-            );
-        } catch {
-            throw new Error(
-                `分块 ${chunkIndex} 解密失败。数据可能已被篡改或密钥错误。`,
-            );
-        }
-    };
-
-    /**
-     * 计算 SHA256 哈希
-     */
-    const computeHash = async (data) => {
-        const hashBuffer = await window.crypto.subtle.digest("SHA-256", data);
-        return Array.from(new Uint8Array(hashBuffer))
-            .map((b) => b.toString(16).padStart(2, "0"))
-            .join("");
-    };
-
-    /**
-     * 获取上传规格
-     */
-    const getUploadSpec = async (
-        fileId,
-        chunkIndex,
-        chunkSize,
-        contentHash,
-        uploadToken,
-    ) => {
-        const res = await fetch("/api/upload/chunk", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "X-Upload-Token": uploadToken,
-            },
-            body: JSON.stringify({
-                fileId,
-                chunkIndex,
-                chunkSize,
-                contentHash,
-            }),
-        });
-        if (!res.ok) {
-            const errData = await res.json().catch(() => ({}));
-            throw new Error(
-                `Get upload spec failed: ${errData.error || res.statusText}`,
-            );
-        }
-        return res.json();
-    };
-
-    /**
-     * 使用 XHR 上传数据（支持进度回调）
-     */
-    const uploadWithXHR = (uploadSpec, data, onProgress) => {
-        return new Promise((resolve, reject) => {
-            const xhr = new XMLHttpRequest();
-
-            xhr.upload.onprogress = (e) => {
-                if (e.lengthComputable) onProgress(e.loaded);
-            };
-
-            xhr.onload = () => {
-                if (xhr.status >= 200 && xhr.status < 300) {
-                    resolve();
-                    return;
-                }
-                reject(new Error(`Upload failed: ${xhr.status}`));
-            };
-
-            xhr.onerror = () => reject(new Error("Network error"));
-
-            xhr.open(uploadSpec.method, uploadSpec.url);
-            if (uploadSpec.headers) {
-                for (const [key, value] of Object.entries(uploadSpec.headers)) {
-                    xhr.setRequestHeader(key, value);
-                }
-            }
-
-            if (uploadSpec.bodyType === "form-data") {
-                const form = new FormData();
-                form.append(uploadSpec.fieldName || "file", new Blob([data]));
-                xhr.send(form);
-            } else {
-                xhr.send(data);
-            }
-        });
-    };
-
-    /**
-     * 通知服务端分片上传完成
-     */
-    const notifyChunkComplete = async (
-        fileId,
-        chunkIndex,
-        chunkFileId,
-        uploadId,
-        contentHash,
-        uploadToken,
-    ) => {
-        const res = await fetch("/api/upload/chunk", {
-            method: "PUT",
-            headers: {
-                "Content-Type": "application/json",
-                "X-Upload-Token": uploadToken,
-            },
-            body: JSON.stringify({
-                fileId,
-                chunkIndex,
-                chunkFileId,
-                uploadId,
-                contentHash,
-            }),
-        });
-        if (!res.ok) {
-            console.warn(
-                `Complete notification for chunk ${chunkIndex} failed`,
-            );
-        }
-    };
-
-    /**
-     * 完成整个上传
-     */
-    const finalizeUpload = async (fileId, fileMeta, chunkIds, uploadToken) => {
-        const res = await fetch("/api/upload/complete", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "X-Upload-Token": uploadToken,
-            },
-            body: JSON.stringify({
-                fileId,
-                metadata: fileMeta,
-                chunkIds,
-            }),
-        });
-        if (!res.ok) {
-            const errData = await res.json().catch(() => ({}));
-            throw new Error(
-                `Upload finalization failed: ${errData.error || res.statusText}`,
-            );
-        }
-    };
-
-    const processAndUpload = async () => {
+    // ===== Upload Handler =====
+    async function processAndUpload() {
         if (!file) return;
 
         if (file.size > serverConfig.maxFileSize) {
@@ -442,6 +137,7 @@
 
         view = "processing";
         error = "";
+        progress = 0;
         statusInfo = {
             action: "正在初始化上传...",
             size: "",
@@ -450,138 +146,33 @@
         };
 
         try {
-            // 1. 初始化上传
-            const { fileId, uploadToken } = await initUpload(file.size);
-
-            // 2. 准备加密
-            const masterKeyStr = await generateMasterKey();
-            const masterKey = await importMasterKey(masterKeyStr);
-            const baseIv = window.crypto.getRandomValues(new Uint8Array(12));
-            const keyHash = await hashData(masterKeyStr);
-
-            const totalChunks = Math.ceil(file.size / serverConfig.chunkSize);
-            const totalBytes = file.size;
-            let uploadedBytes = 0;
+            const uploader = new FileUploader(file, serverConfig);
             const speedTracker = new SpeedTracker(10000);
-            const uploadedChunkIds = [];
 
-            const updateProgress = () => {
+            const updateProgress = (bytes, total) => {
+                speedTracker.record(bytes);
                 const speed = speedTracker.speed();
-                const eta =
-                    speed > 0 ? (totalBytes - uploadedBytes) / speed : 0;
-                progress = Math.round((uploadedBytes / totalBytes) * 100);
+                const remaining = uploader.totalBytes - uploader.uploadedBytes;
+                const eta = speed > 0 ? remaining / speed : 0;
+
+                progress = Math.round(
+                    (uploader.uploadedBytes / uploader.totalBytes) * 100,
+                );
                 statusInfo = {
                     action: "正在上传",
-                    size: `${formatBytes(uploadedBytes)} / ${formatBytes(totalBytes)}`,
+                    size: `${formatBytes(uploader.uploadedBytes)} / ${formatBytes(uploader.totalBytes)}`,
                     speed: speed > 0 ? formatSpeed(speed) : "",
                     eta: eta > 0 ? formatETA(eta) : "",
                 };
             };
 
-            statusInfo = {
-                action: "准备上传",
-                size: `${totalChunks} 个分块`,
-                speed: "",
-                eta: "",
+            const onStatusUpdate = (update) => {
+                statusInfo = { ...statusInfo, ...update };
             };
 
-            // 3. 逐块加密并上传
-            for (let i = 0; i < totalChunks; i++) {
-                const start = i * serverConfig.chunkSize;
-                const chunkBuffer = await file
-                    .slice(
-                        start,
-                        Math.min(start + serverConfig.chunkSize, file.size),
-                    )
-                    .arrayBuffer();
-                const encryptedChunk = await encryptChunkWithBlocks(
-                    chunkBuffer,
-                    masterKey,
-                    baseIv,
-                    i,
-                    ENCRYPTION_BLOCK_SIZE,
-                );
-                const contentHash = await computeHash(encryptedChunk);
-
-                const chunkFileId = await withRetry(async () => {
-                    const bytesBeforeAttempt = uploadedBytes;
-                    let chunkUploaded = 0;
-
-                    try {
-                        const { uploadSpec, chunkFileId, uploadId } =
-                            await getUploadSpec(
-                                fileId,
-                                i,
-                                encryptedChunk.byteLength,
-                                contentHash,
-                                uploadToken,
-                            );
-
-                        await uploadWithXHR(
-                            uploadSpec,
-                            encryptedChunk,
-                            (loaded) => {
-                                const delta = loaded - chunkUploaded;
-                                chunkUploaded = loaded;
-                                uploadedBytes += delta;
-                                speedTracker.record(delta);
-                                updateProgress();
-                            },
-                        );
-
-                        await notifyChunkComplete(
-                            fileId,
-                            i,
-                            chunkFileId,
-                            uploadId,
-                            contentHash,
-                            uploadToken,
-                        );
-                        return chunkFileId;
-                    } catch (err) {
-                        uploadedBytes = bytesBeforeAttempt;
-                        updateProgress();
-                        throw err;
-                    }
-                });
-
-                uploadedChunkIds.push({ index: i, fileId: chunkFileId });
-            }
-
-            // 4. 完成上传
-            statusInfo = {
-                action: "正在完成上传...",
-                size: "",
-                speed: "",
-                eta: "",
-            };
-
-            const sensitiveMeta = {
-                name: file.name,
-                type: file.type || "application/octet-stream",
-            };
-            const encryptedMeta = await encryptSensitiveMeta(
-                masterKey,
-                baseIv,
-                sensitiveMeta,
-            );
-
-            const fileMeta = {
-                size: file.size,
-                iv: Array.from(baseIv),
-                keyHash,
-                createdAt: Date.now(),
-                totalChunks,
-                encryptedMeta,
-                encryptionBlockSize: ENCRYPTION_BLOCK_SIZE,
-                chunkSize: serverConfig.chunkSize,
-            };
-
-            await finalizeUpload(
-                fileId,
-                fileMeta,
-                uploadedChunkIds,
-                uploadToken,
+            const { fileId, masterKeyStr } = await uploader.upload(
+                updateProgress,
+                onStatusUpdate,
             );
 
             shareLink = `${window.location.origin}${window.location.pathname}?f=${fileId}#${masterKeyStr}`;
@@ -592,133 +183,10 @@
             error = "上传失败：" + err.message;
             view = "home";
         }
-    };
+    }
 
-    // 4. Download and Decrypt (Real Implementation)
-
-    /**
-     * 获取 chunk URL（统一端点，服务端自动处理直链/转发）
-     */
-    const getChunkURL = (chunkIndex) => {
-        return `/api/file/${urlParams.id}/chunk/${chunkIndex}`;
-    };
-
-    /**
-     * 从 URL 读取数据流并返回完整数据（用于旧文件兼容）
-     * 浏览器会自动跟随 302 重定向
-     */
-    const fetchWithProgress = async (url, onProgress) => {
-        const res = await fetch(url);
-        if (!res.ok) {
-            throw new Error(`下载失败: ${res.status}`);
-        }
-
-        const reader = res.body.getReader();
-        const chunks = [];
-        let received = 0;
-
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            chunks.push(value);
-            received += value.byteLength;
-            onProgress(value.byteLength, received);
-        }
-
-        // 合并所有块
-        const buffer = new Uint8Array(received);
-        let offset = 0;
-        for (const chunk of chunks) {
-            buffer.set(chunk, offset);
-            offset += chunk.byteLength;
-        }
-
-        return buffer;
-    };
-
-    /**
-     * 流式下载并解密：边下载边解密边写入
-     * 极大减少内存占用，仅需 ~1MB 缓冲区
-     */
-    const streamFetchAndDecrypt = async (
-        url,
-        masterKey,
-        baseIv,
-        chunkIndex,
-        encryptionBlockSize,
-        blockSize,
-        onDecrypted,
-        onProgress,
-    ) => {
-        const res = await fetch(url);
-        if (!res.ok) {
-            throw new Error(`下载失败: ${res.status}`);
-        }
-
-        const reader = res.body.getReader();
-        const encryptedBlockSizeWithTag = encryptionBlockSize + 16;
-        const blocksPerChunk = Math.ceil(blockSize / encryptionBlockSize);
-        const globalBlockOffset = chunkIndex * blocksPerChunk;
-
-        let pendingBuffer = new Uint8Array(0);
-        let blockIndex = 0;
-        let totalReceived = 0;
-
-        while (true) {
-            const { done, value } = await reader.read();
-
-            if (value) {
-                totalReceived += value.byteLength;
-                onProgress(value.byteLength, totalReceived);
-
-                // 合并待处理缓冲区
-                const newBuffer = new Uint8Array(
-                    pendingBuffer.length + value.length,
-                );
-                newBuffer.set(pendingBuffer);
-                newBuffer.set(value, pendingBuffer.length);
-                pendingBuffer = newBuffer;
-            }
-
-            // 处理完整的加密块
-            while (
-                pendingBuffer.length >= encryptedBlockSizeWithTag ||
-                (done && pendingBuffer.length > 0)
-            ) {
-                const isLastBlock =
-                    done && pendingBuffer.length < encryptedBlockSizeWithTag;
-                const blockEnd = isLastBlock
-                    ? pendingBuffer.length
-                    : encryptedBlockSizeWithTag;
-                const blockData = pendingBuffer.slice(0, blockEnd);
-                pendingBuffer = pendingBuffer.slice(blockEnd);
-
-                const globalIndex = globalBlockOffset + blockIndex;
-                const iv = getChunkIV(baseIv, globalIndex);
-
-                try {
-                    const decrypted = await window.crypto.subtle.decrypt(
-                        { name: "AES-GCM", iv },
-                        masterKey,
-                        blockData,
-                    );
-                    await onDecrypted(new Uint8Array(decrypted));
-                } catch {
-                    throw new Error(
-                        `分块 ${chunkIndex} 子块 ${blockIndex} 解密失败。数据可能已被篡改或密钥错误。`,
-                    );
-                }
-                blockIndex++;
-
-                if (isLastBlock) break;
-            }
-
-            if (done) break;
-        }
-    };
-
-    const handleDownload = async () => {
+    // ===== Download Handler =====
+    async function handleDownload() {
         if (!metaData || !urlParams.key || !urlParams.id) return;
 
         statusInfo = { action: "准备下载...", size: "", speed: "", eta: "" };
@@ -726,117 +194,47 @@
         progress = 0;
 
         try {
-            const masterKey = await importMasterKey(urlParams.key);
-            const baseIv = new Uint8Array(metaData.iv);
-            const totalBytes = metaData.size;
+            // Open file save dialog
+            const fileHandle = await showSaveFilePicker({
+                suggestedName: metaData.name,
+                types: [
+                    {
+                        description: "Files",
+                        accept: {
+                            [metaData.type || "application/octet-stream"]: [],
+                        },
+                    },
+                ],
+            });
+
+            const writable = await fileHandle.createWritable();
+            const downloader = new FileDownloader(urlParams.id, metaData);
             const speedTracker = new SpeedTracker(2000);
 
-            let downloadedBytes = 0;
-
-            const updateProgress = (chunkBytes, totalDownloaded) => {
-                speedTracker.record(chunkBytes);
-                downloadedBytes = totalDownloaded;
-
+            const updateProgress = (bytes, total) => {
+                speedTracker.record(bytes);
                 const speed = speedTracker.speed();
-                const remaining = totalBytes - downloadedBytes;
+                const remaining =
+                    downloader.totalBytes - downloader.downloadedBytes;
                 const eta = speed > 0 ? remaining / speed : 0;
 
-                progress = Math.round((downloadedBytes / totalBytes) * 100);
+                progress = Math.round(
+                    (downloader.downloadedBytes / downloader.totalBytes) * 100,
+                );
                 statusInfo = {
                     action: "正在下载",
-                    size: `${formatBytes(downloadedBytes)} / ${formatBytes(totalBytes)}`,
+                    size: `${formatBytes(downloader.downloadedBytes)} / ${formatBytes(downloader.totalBytes)}`,
                     speed: speed > 0 ? formatSpeed(speed) : "",
                     eta: eta > 0 ? formatETA(eta) : "",
                 };
             };
 
-            // 打开文件保存对话框
-            let fileHandle;
             try {
-                fileHandle = await showSaveFilePicker({
-                    suggestedName: metaData.name,
-                    types: [
-                        {
-                            description: "Files",
-                            accept: {
-                                [metaData.type || "application/octet-stream"]:
-                                    [],
-                            },
-                        },
-                    ],
-                });
-            } catch (e) {
-                if (e.name === "AbortError") {
-                    view = "download";
-                    statusInfo = { action: "", size: "", speed: "", eta: "" };
-                    return;
-                }
-                throw e;
-            }
-
-            const writable = await fileHandle.createWritable();
-
-            try {
-                let cumulativeBytes = 0;
-                for (let i = 0; i < metaData.totalChunks; i++) {
-                    const chunkBaseBytes = cumulativeBytes;
-
-                    // 兼容，曾经命名为 blockSize，现在命名为 chunkSize
-                    const chunkSize = metaData.chunkSize || metaData.blockSize;
-                    // 根据 metadata 判断使用新旧解密方式
-                    if (metaData.encryptionBlockSize && chunkSize) {
-                        let chunkWritePosition = chunkBaseBytes;
-                        // 新加密：真正的流式处理，边下载边解密边写入
-                        await withRetry(async () => {
-                            downloadedBytes = chunkBaseBytes;
-                            await writable.seek(chunkWritePosition);
-                            await streamFetchAndDecrypt(
-                                getChunkURL(i),
-                                masterKey,
-                                baseIv,
-                                i,
-                                metaData.encryptionBlockSize,
-                                chunkSize,
-                                async (decrypted) => {
-                                    await writable.write(decrypted);
-                                    cumulativeBytes += decrypted.byteLength;
-                                    chunkWritePosition += decrypted.byteLength;
-                                },
-                                (bytes, total) =>
-                                    updateProgress(
-                                        bytes,
-                                        chunkBaseBytes + total,
-                                    ),
-                            );
-                        });
-                    } else {
-                        // 向后兼容：旧文件使用整块解密
-                        const decryptedBuffer = await withRetry(async () => {
-                            downloadedBytes = chunkBaseBytes;
-
-                            const url = getChunkURL(i);
-                            const encryptedData = await fetchWithProgress(
-                                url,
-                                (bytes, total) =>
-                                    updateProgress(
-                                        bytes,
-                                        chunkBaseBytes + total,
-                                    ),
-                            );
-
-                            return await decryptChunk(
-                                encryptedData,
-                                masterKey,
-                                baseIv,
-                                i,
-                            );
-                        });
-
-                        await writable.write(new Uint8Array(decryptedBuffer));
-                        cumulativeBytes += decryptedBuffer.byteLength;
-                    }
-                }
-
+                await downloader.download(
+                    urlParams.key,
+                    writable,
+                    updateProgress,
+                );
                 await writable.close();
             } catch (err) {
                 await writable.abort();
@@ -846,12 +244,18 @@
             view = "download";
             statusInfo = { action: "", size: "", speed: "", eta: "" };
         } catch (err) {
+            if (err.name === "AbortError") {
+                view = "download";
+                statusInfo = { action: "", size: "", speed: "", eta: "" };
+                return;
+            }
             console.error(err);
             error = "下载/解密失败：" + err.message;
             view = "download";
         }
-    };
+    }
 
+    // ===== UI Handlers =====
     function handleFileChange(e) {
         if (e.target.files && e.target.files[0]) {
             file = e.target.files[0];
