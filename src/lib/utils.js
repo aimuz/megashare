@@ -243,7 +243,9 @@ export class BufferAccumulator {
  * 将 Uint8Array 转换为十六进制字符串
  */
 export function bytesToHex(bytes) {
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  let hex = '';
+  for (let i = 0; i < bytes.length; i++) {
+    hex += bytes[i].toString(16).padStart(2, '0');
+  }
+  return hex;
 }
