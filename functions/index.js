@@ -4,11 +4,11 @@
  */
 
 import {
-    handleUploadStart,
-    handleUploadChunk,
-    handleUploadChunkData,
-    handleUploadChunkComplete,
-    handleUploadComplete,
+  handleUploadStart,
+  handleUploadChunk,
+  handleUploadChunkData,
+  handleUploadChunkComplete,
+  handleUploadComplete,
 } from "./handlers/upload.js";
 import { handleGetFile, handleGetChunk } from "./handlers/file.js";
 import { handleGC } from "./handlers/gc.js";
@@ -24,34 +24,34 @@ import config from "./config/config.js";
 // 导入存储后端以触发插件注册
 import "./storage/s3.js";
 
-import { Hono } from 'hono'
-const app = new Hono()
+import { Hono } from "hono";
+const app = new Hono();
 
 // 统一错误处理
 app.onError((err, c) => {
-    console.error(`[Error] ${c.req.method} ${c.req.path}:`, err.message || err);
+  console.error(`[Error] ${c.req.method} ${c.req.path}:`, err.message || err);
 
-    // 避免暴露内部错误细节
-    const status = err.status || 500;
-    const message = status < 500 ? err.message : "Internal Server Error";
+  // 避免暴露内部错误细节
+  const status = err.status || 500;
+  const message = status < 500 ? err.message : "Internal Server Error";
 
-    return c.json({ error: message }, status);
+  return c.json({ error: message }, status);
 });
 
 // 在所有请求前加载配置
 app.use("*", async (c, next) => {
-    await config.load();
-    await next();
+  await config.load();
+  await next();
 });
 
-app.post("/api/upload/start", handleUploadStart)
-app.post("/api/upload/chunk", handleUploadChunk)
-app.put("/api/upload/chunk", handleUploadChunkComplete)
-app.post("/api/upload/chunk/data", handleUploadChunkData)
-app.post("/api/upload/complete", handleUploadComplete)
-app.get("/api/file/:id/chunk/:chunkIndex", handleGetChunk)
-app.get("/api/file/:id", handleGetFile)
-app.post("/api/gc", handleGC)
-app.get("/api/config", handleGetConfig)
+app.post("/api/upload/start", handleUploadStart);
+app.post("/api/upload/chunk", handleUploadChunk);
+app.put("/api/upload/chunk", handleUploadChunkComplete);
+app.post("/api/upload/chunk/data", handleUploadChunkData);
+app.post("/api/upload/complete", handleUploadComplete);
+app.get("/api/file/:id/chunk/:chunkIndex", handleGetChunk);
+app.get("/api/file/:id", handleGetFile);
+app.post("/api/gc", handleGC);
+app.get("/api/config", handleGetConfig);
 
-export default app
+export default app;

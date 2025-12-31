@@ -14,7 +14,7 @@ let workerEnv = null;
  * @param {Object} env
  */
 export function setWorkerEnv(env) {
-    workerEnv = env;
+  workerEnv = env;
 }
 
 /**
@@ -22,13 +22,13 @@ export function setWorkerEnv(env) {
  * @returns {Promise<Object<string, any>>}
  */
 async function loadFromWorkerEnv() {
-    return workerEnv || {};
+  return workerEnv || {};
 }
 
 // 检测 Cloudflare Workers 环境并自动注册
 // caches 存在且 EdgeKV 不存在时认为是 CF 环境
 if (typeof caches !== "undefined" && typeof EdgeKV === "undefined") {
-    registerProvider("cfenv", loadFromWorkerEnv);
+  registerProvider("cfenv", loadFromWorkerEnv);
 }
 
 export { loadFromWorkerEnv };

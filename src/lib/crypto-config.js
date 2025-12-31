@@ -5,7 +5,6 @@
 
 const { StreamEncryptor, StreamDecryptor } = await import("./crypto.js");
 
-
 export const ENCRYPTION_BLOCK_SIZE = 1024 * 1024;
 
 // 默认配置
@@ -24,8 +23,7 @@ export const CryptoConfig = {
  */
 export async function getEncryptorClass() {
   if (CryptoConfig.useWorker) {
-    const { WorkerStreamEncryptor } =
-      await import("./crypto-worker-streams.js");
+    const { WorkerStreamEncryptor } = await import("./crypto-worker-streams.js");
     return WorkerStreamEncryptor;
   } else {
     return StreamEncryptor;
@@ -37,8 +35,7 @@ export async function getEncryptorClass() {
  */
 export async function getDecryptorClass() {
   if (CryptoConfig.useWorker) {
-    const { WorkerStreamDecryptor } =
-      await import("./crypto-worker-streams.js");
+    const { WorkerStreamDecryptor } = await import("./crypto-worker-streams.js");
     return WorkerStreamDecryptor;
   } else {
     return StreamDecryptor;

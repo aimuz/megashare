@@ -10,11 +10,10 @@ import { BufferAccumulator } from "./utils.js";
  * 生成主密钥
  */
 export async function generateMasterKey() {
-  const key = await window.crypto.subtle.generateKey(
-    { name: "AES-GCM", length: 256 },
-    true,
-    ["encrypt", "decrypt"],
-  );
+  const key = await window.crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, [
+    "encrypt",
+    "decrypt",
+  ]);
   return key;
 }
 
@@ -41,9 +40,8 @@ export function encodeBase64(exported) {
 }
 
 export function decodeBase64(base64Key) {
-  const rawKey = Uint8Array.from(
-    atob(base64Key.replace(/-/g, "+").replace(/_/g, "/")),
-    (c) => c.charCodeAt(0),
+  const rawKey = Uint8Array.from(atob(base64Key.replace(/-/g, "+").replace(/_/g, "/")), (c) =>
+    c.charCodeAt(0),
   );
   return rawKey;
 }
@@ -53,10 +51,7 @@ export function decodeBase64(base64Key) {
  */
 export async function hashData(dataStr) {
   const enc = new TextEncoder();
-  const hashBuffer = await window.crypto.subtle.digest(
-    "SHA-256",
-    enc.encode(dataStr),
-  );
+  const hashBuffer = await window.crypto.subtle.digest("SHA-256", enc.encode(dataStr));
   return encodeBase64(hashBuffer);
 }
 
@@ -89,18 +84,12 @@ export async function encryptSensitiveMeta(masterKey, baseIv, sensitiveMeta) {
 /**
  * 解密敏感元数据
  */
-export async function decryptSensitiveMeta(
-  masterKeyStr,
-  baseIv,
-  encryptedMeta,
-) {
+export async function decryptSensitiveMeta(masterKeyStr, baseIv, encryptedMeta) {
   try {
     const masterKey = await importMasterKey(decodeBase64(masterKeyStr));
     const ivArray = new Uint8Array(baseIv);
     const metaIv = getChunkIV(ivArray, 0xffffffff);
-    const encrypted = Uint8Array.from(atob(encryptedMeta), (c) =>
-      c.charCodeAt(0),
-    );
+    const encrypted = Uint8Array.from(atob(encryptedMeta), (c) => c.charCodeAt(0));
     const decrypted = await window.crypto.subtle.decrypt(
       { name: "AES-GCM", iv: metaIv },
       masterKey,
@@ -129,11 +118,7 @@ export async function computeHash(data) {
  */
 async function encryptBlock(blockData, masterKey, baseIv, globalIndex) {
   const iv = getChunkIV(baseIv, globalIndex);
-  return await window.crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
-    masterKey,
-    blockData,
-  );
+  return await window.crypto.subtle.encrypt({ name: "AES-GCM", iv }, masterKey, blockData);
 }
 
 /**
@@ -141,11 +126,7 @@ async function encryptBlock(blockData, masterKey, baseIv, globalIndex) {
  */
 async function decryptBlock(blockData, masterKey, baseIv, globalIndex) {
   const iv = getChunkIV(baseIv, globalIndex);
-  return await window.crypto.subtle.decrypt(
-    { name: "AES-GCM", iv },
-    masterKey,
-    blockData,
-  );
+  return await window.crypto.subtle.decrypt({ name: "AES-GCM", iv }, masterKey, blockData);
 }
 
 /**
@@ -188,9 +169,7 @@ export class StreamEncryptor {
       // 处理完整的加密块
       while (buffer.length >= this.blockSize || (done && buffer.length > 0)) {
         const isLastBlock = done && buffer.length < this.blockSize;
-        const blockData = isLastBlock
-          ? buffer.consumeAll()
-          : buffer.consume(this.blockSize);
+        const blockData = isLastBlock ? buffer.consumeAll() : buffer.consume(this.blockSize);
 
         const globalIndex = this.globalBlockOffset + blockIndex;
         try {
@@ -271,23 +250,14 @@ export class StreamDecryptor {
       }
 
       // 处理完整的加密块
-      while (
-        buffer.length >= this.encryptedBlockSizeWithTag ||
-        (done && buffer.length > 0)
-      ) {
-        const isLastBlock =
-          done && buffer.length < this.encryptedBlockSizeWithTag;
+      while (buffer.length >= this.encryptedBlockSizeWithTag || (done && buffer.length > 0)) {
+        const isLastBlock = done && buffer.length < this.encryptedBlockSizeWithTag;
         const blockData = isLastBlock
           ? buffer.consumeAll()
           : buffer.consume(this.encryptedBlockSizeWithTag);
 
         const globalIndex = this.globalBlockOffset + blockIndex;
-        const decrypted = await decryptBlock(
-          blockData,
-          this.masterKey,
-          this.baseIv,
-          globalIndex,
-        );
+        const decrypted = await decryptBlock(blockData, this.masterKey, this.baseIv, globalIndex);
 
         await onDecrypted(decrypted);
         blockIndex++;

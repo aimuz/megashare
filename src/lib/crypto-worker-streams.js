@@ -67,9 +67,7 @@ export class WorkerStreamEncryptor {
         // 处理完整的加密块
         while (buffer.length >= this.blockSize || (done && buffer.length > 0)) {
           const isLastBlock = done && buffer.length < this.blockSize;
-          const blockData = isLastBlock
-            ? buffer.consumeAll()
-            : buffer.consume(this.blockSize);
+          const blockData = isLastBlock ? buffer.consumeAll() : buffer.consume(this.blockSize);
 
           // 加密（使用 keyId）
           const encryptedBlock = await this.worker.encryptBlock(
@@ -173,12 +171,8 @@ export class WorkerStreamDecryptor {
         }
 
         // 处理完整的加密块
-        while (
-          buffer.length >= this.encryptedBlockSizeWithTag ||
-          (done && buffer.length > 0)
-        ) {
-          const isLastBlock =
-            done && buffer.length < this.encryptedBlockSizeWithTag;
+        while (buffer.length >= this.encryptedBlockSizeWithTag || (done && buffer.length > 0)) {
+          const isLastBlock = done && buffer.length < this.encryptedBlockSizeWithTag;
           const blockData = isLastBlock
             ? buffer.consumeAll()
             : buffer.consume(this.encryptedBlockSizeWithTag);

@@ -27,14 +27,7 @@ export class FileDownloader {
   /**
    * 流式下载并解密
    */
-  async _downloadChunk(
-    chunkIndex,
-    writable,
-    masterKey,
-    baseIv,
-    chunkBaseBytes,
-    onProgress,
-  ) {
+  async _downloadChunk(chunkIndex, writable, masterKey, baseIv, chunkBaseBytes, onProgress) {
     let cumulativeBytes = chunkBaseBytes;
 
     // 动态获取解密器类（支持 Worker 或主线程）

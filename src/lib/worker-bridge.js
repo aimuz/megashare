@@ -20,10 +20,9 @@ class CryptoWorkerBridge {
 
     this.readyPromise = new Promise((resolve, reject) => {
       try {
-        this.worker = new Worker(
-          new URL("../workers/crypto-worker.js", import.meta.url),
-          { type: "module" },
-        );
+        this.worker = new Worker(new URL("../workers/crypto-worker.js", import.meta.url), {
+          type: "module",
+        });
 
         this.worker.addEventListener("message", (event) => {
           const { id, type, result, error } = event.data;
@@ -136,7 +135,7 @@ class CryptoWorkerBridge {
         globalBlockOffset,
         blockIndex,
       },
-      transferables
+      transferables,
     );
     return result.data;
   }
@@ -163,7 +162,7 @@ class CryptoWorkerBridge {
         globalBlockOffset,
         blockIndex,
       },
-      transferables
+      transferables,
     );
     return result.data;
   }
