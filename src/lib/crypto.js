@@ -2,7 +2,8 @@
  * 加密相关工具函数
  */
 
-import { appendBuffer } from "./utils";
+import { BufferAccumulator, bytesToHex } from "./utils";
+import { sha256 } from "@noble/hashes/sha2.js";
 
 /**
  * 生成主密钥
@@ -13,12 +14,12 @@ export async function generateMasterKey() {
     true,
     ["encrypt", "decrypt"],
   );
-  return key
+  return key;
 }
 
 export async function exportMasterKey(key) {
   const rawKey = await window.crypto.subtle.exportKey("raw", key);
-  return encodeBase64(rawKey)
+  return encodeBase64(rawKey);
 }
 
 /**
@@ -166,9 +167,13 @@ export class StreamEncryptor {
     // 用于累积加密块（边加密边累积，用于创建 Blob）
     const encryptedBlocks = [];
 
-    let pendingBuffer = new Uint8Array(0);
+    // 流式哈希计算器
+    const hasher = sha256.create();
+
+    const buffer = new BufferAccumulator();
     let blockIndex = 0;
     let totalRead = 0;
+    let totalEncryptedSize = 0;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -176,19 +181,15 @@ export class StreamEncryptor {
       if (value) {
         totalRead += value.byteLength;
         onProgress?.(value.byteLength, totalRead);
-        pendingBuffer = appendBuffer(pendingBuffer, value);
+        buffer.append(value);
       }
 
       // 处理完整的加密块
-      while (
-        pendingBuffer.length >= this.blockSize ||
-        (done && pendingBuffer.length > 0)
-      ) {
-        const isLastBlock = done && pendingBuffer.length < this.blockSize;
-        const blockEnd = isLastBlock ? pendingBuffer.length : this.blockSize;
-        // Use subarray to avoid copying
-        const blockData = pendingBuffer.subarray(0, blockEnd);
-        pendingBuffer = pendingBuffer.subarray(blockEnd);
+      while (buffer.length >= this.blockSize || (done && buffer.length > 0)) {
+        const isLastBlock = done && buffer.length < this.blockSize;
+        const blockData = isLastBlock
+          ? buffer.consumeAll()
+          : buffer.consume(this.blockSize);
 
         const globalIndex = this.globalBlockOffset + blockIndex;
         try {
@@ -198,6 +199,11 @@ export class StreamEncryptor {
             this.baseIv,
             globalIndex,
           );
+
+          // 增量计算哈希
+          hasher.update(new Uint8Array(encryptedBlock));
+          totalEncryptedSize += encryptedBlock.byteLength;
+
           encryptedBlocks.push(encryptedBlock);
           onEncrypted?.(encryptedBlock);
           blockIndex++;
@@ -213,11 +219,17 @@ export class StreamEncryptor {
       if (done) break;
     }
 
+    // 完成哈希计算
+    const contentHash = bytesToHex(hasher.digest());
+
     const encryptedBlob = new Blob(encryptedBlocks);
-    const encryptedData = await encryptedBlob.arrayBuffer();
-    const contentHash = await computeHash(encryptedData);
+
+    // 释放 encryptedBlocks 引用，允许 GC 回收
+    encryptedBlocks.length = 0;
+
     return {
-      data: encryptedData,
+      blob: encryptedBlob,
+      size: totalEncryptedSize,
       hash: contentHash,
     };
   }
@@ -244,7 +256,7 @@ export class StreamDecryptor {
     }
 
     const reader = res.body.getReader();
-    let pendingBuffer = new Uint8Array(0);
+    const buffer = new BufferAccumulator();
     let blockIndex = 0;
     let totalReceived = 0;
 
@@ -254,21 +266,19 @@ export class StreamDecryptor {
       if (value) {
         totalReceived += value.byteLength;
         onProgress?.(value.byteLength, totalReceived);
-        pendingBuffer = appendBuffer(pendingBuffer, value);
+        buffer.append(value);
       }
 
       // 处理完整的加密块
       while (
-        pendingBuffer.length >= this.encryptedBlockSizeWithTag ||
-        (done && pendingBuffer.length > 0)
+        buffer.length >= this.encryptedBlockSizeWithTag ||
+        (done && buffer.length > 0)
       ) {
         const isLastBlock =
-          done && pendingBuffer.length < this.encryptedBlockSizeWithTag;
-        const blockEnd = isLastBlock
-          ? pendingBuffer.length
-          : this.encryptedBlockSizeWithTag;
-        const blockData = pendingBuffer.subarray(0, blockEnd);
-        pendingBuffer = pendingBuffer.subarray(blockEnd);
+          done && buffer.length < this.encryptedBlockSizeWithTag;
+        const blockData = isLastBlock
+          ? buffer.consumeAll()
+          : buffer.consume(this.encryptedBlockSizeWithTag);
 
         const globalIndex = this.globalBlockOffset + blockIndex;
         const decrypted = await decryptBlock(
